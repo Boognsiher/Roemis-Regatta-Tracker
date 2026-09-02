@@ -1,0 +1,121 @@
+# Roemis Regatta Tracker
+
+Selbst gehosteter Live-Positions-Tracker fuer Regatten. Zeigt beliebig viele Boote gleichzeitig
+live auf einer Karte an. Jeder "Tracker" ist einfach ein Smartphone im Boot mit einer Web-Seite
+offen (kein App-Store, kein Loeten noetig) - Hardware-Tracker (ESP32 etc.) koennen spaeter
+genauso an dieselbe API angebunden werden (siehe unten).
+
+## Architektur
+
+```
+Handy im Boot (Browser/PWA)  --HTTPS POST alle ~5s-->  Server (Node.js)  --WebSocket-->  Live-Karte (Browser)
+```
+
+- **Server** (`server/`): Express + WebSocket. Speichert Tracker + Positionen als einfache
+  JSON-Dateien unter `data/` (keine Datenbank noetig).
+- **Live-Karte** (`public/index.html`): Leaflet-Karte, zeigt alle Tracker live inkl. Spur (Track)
+  und Alter der letzten Meldung. Aktualisiert sich per WebSocket automatisch.
+- **Tracker-Seite** (`public/tracker.html`, erreichbar unter `/t/<id>?token=<token>`): Mini-PWA,
+  die per `navigator.geolocation.watchPosition` die Position holt und alle 5 Sekunden an den
+  Server sendet. Ein Start/Stop-Knopf, Status-Anzeige, haelt den Bildschirm wach (Wake Lock),
+  installierbar auf dem Homescreen.
+- **Admin** (`public/admin.html`): Neue Tracker anlegen (erzeugt eindeutige ID + Secret-Token),
+  Link/QR-Code zum Teilen an den Skipper, Tracker umbenennen/loeschen, Spur zuruecksetzen.
+
+Neue Boote hinzufuegen heisst nur: im Admin-Bereich einen Tracker anlegen und den QR-Code an das
+Handy im Boot schicken - keine Server-Konfiguration noetig, beliebig skalierbar.
+
+## Schnellstart (lokal, mit Docker)
+
+```bash
+cp .env.example .env
+# .env oeffnen und ADMIN_TOKEN auf ein eigenes, langes Passwort setzen
+
+docker compose up -d --build
+```
+
+Danach:
+
+- Live-Karte: http://localhost:3000/
+- Admin-Bereich: http://localhost:3000/admin.html (Login mit dem `ADMIN_TOKEN` aus der `.env`)
+
+Ohne Docker geht es genauso mit reinem Node.js (>= 18):
+
+```bash
+npm install
+ADMIN_TOKEN=mein-geheimes-token npm start
+```
+
+## Einen Tracker anlegen und benutzen
+
+1. Im Admin-Bereich Namen eingeben (z.B. Bootsname/Segelnummer) -> "Tracker anlegen".
+2. QR-Code mit dem Handy scannen, das im Boot mitfaehrt (oder Link per Nachricht schicken).
+3. Auf dem Handy oeffnet sich die Tracker-Seite. Standortzugriff erlauben, "Start" druecken.
+4. Idealerweise die Seite per "Zum Home-Bildschirm hinzufuegen" installieren (PWA) und das Handy
+   waehrend des Rennens eingeschaltet/im Boot befestigt lassen. GPS + mobile Daten muessen aktiv
+   sein, da die Position ueber das Internet an den Server gesendet wird.
+5. Auf der Live-Karte (`/`) erscheint das Boot automatisch, sobald die erste Position eintrifft.
+
+## Damit das auch auf dem Wasser funktioniert (wichtig!)
+
+Der Server muss aus dem Mobilfunknetz heraus erreichbar sein, sonst kommen keine Positionen an.
+Optionen, sortiert nach Aufwand:
+
+- **Am einfachsten:** Server auf einem echten VPS/Server mit eigener Domain + HTTPS betreiben
+  (z.B. per Reverse Proxy wie Caddy/Traefik/nginx vor diesem Container). `docker-compose.yml`
+  bleibt gleich, nur Port 3000 hinter den Proxy haengen.
+- **Ohne eigenen Server im Internet:** Ein Tool wie [Tailscale](https://tailscale.com) oder
+  [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+  auf dem Raspberry Pi/Rechner installieren, der die App hostet - macht sie ohne Portfreigabe von
+  ueberall erreichbar.
+- Rein lokal im Vereinsheim-WLAN reicht es auch, wenn alle Boote in WLAN-Reichweite bleiben
+  (z.B. Uebungsregatta auf einem See mit Hotspot am Ufer).
+
+Fuer HTTPS: `navigator.geolocation` und Wake Lock funktionieren im mobilen Chrome/Safari nur
+zuverlaessig ueber **https://** (oder `http://localhost`). Ein Reverse Proxy mit Let's Encrypt
+(z.B. Caddy - macht das automatisch) wird daher fuer den echten Einsatz empfohlen.
+
+## Konfiguration (Umgebungsvariablen)
+
+| Variable | Standard | Beschreibung |
+|---|---|---|
+| `ADMIN_TOKEN` | - (Pflicht) | Passwort fuer den Admin-Bereich |
+| `PORT` | `3000` | HTTP-Port |
+| `STALE_AFTER_SECONDS` | `90` | Ab wann ein Tracker als "offline" markiert wird |
+| `MAX_TRAIL_POINTS` | `1000` | Wie viele Punkte Spur pro Tracker gespeichert werden |
+| `DATA_DIR` | `./data` | Ordner fuer die JSON-Datenablage |
+
+## Guenstige DIY-Hardware-Tracker statt Smartphone
+
+Die Server-API ist bewusst simpel gehalten (ein HTTP-POST mit Bearer-Token), damit spaeter auch
+eigene Mini-Hardware-Tracker angebunden werden koennen, ohne den Server zu aendern:
+
+```
+POST /api/trackers/<id>/position
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "lat": 47.123, "lon": 8.456, "speed": 3.1, "heading": 210, "battery": 0.82 }
+```
+
+Guenstige Optionen fuer spaeter (grob nach Aufwand/Preis):
+
+1. **ESP32 + GPS-Modul (z.B. NEO-6M) + WLAN** (~10-15 EUR/Stueck): sendet per WLAN direkt an
+   diesen Server. Braucht WLAN-Empfang am Kurs (z.B. Hotspot auf einem Begleitboot).
+2. **ESP32 + GPS + LoRa** (~15-20 EUR/Tracker + einmalig ~15 EUR fuer eine LoRa-Basisstation am
+   Ufer): groessere Reichweite auf offenem Wasser (oft mehrere km), keine laufenden Kosten, die
+   Basisstation leitet die Daten dann per WLAN/LAN an diesen Server weiter.
+3. **ESP32 + GPS + Mobilfunk-Modul (SIM800L/A7670)** (~20-25 EUR/Tracker + SIM-Karte mit
+   Datenvolumen): funktioniert ueberall mit Mobilfunknetz, unabhaengig von WLAN-Reichweite.
+
+Jede dieser Varianten muss letztlich nur regelmaessig obigen HTTP-POST absetzen - der Rest der
+App (Karte, Admin, Speicherung) bleibt unveraendert.
+
+## Sicherheit
+
+- Der Admin-Bereich ist nur ueber das `ADMIN_TOKEN` geschuetzt - unbedingt ein langes, zufaelliges
+  Token setzen und nicht committen (`.env` ist in `.gitignore`).
+- Jeder Tracker hat sein eigenes Secret-Token im Link/QR-Code - wer den Link nicht hat, kann keine
+  Fake-Positionen fuer dieses Boot senden.
+- Die Live-Karte (`/`) selbst ist bewusst oeffentlich/ohne Login, da sie fuer Zuschauer gedacht ist.
+  Falls das nicht gewuenscht ist, z.B. per Reverse-Proxy mit Basic-Auth davorschalten.

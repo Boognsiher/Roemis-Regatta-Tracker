@@ -1,0 +1,20 @@
+{
+  "name": "roemis-regatta-tracker",
+  "version": "1.0.0",
+  "description": "Selbst gehosteter Live-Positions-Tracker fuer Regatten - skalierbar auf beliebig viele DIY/Smartphone-Tracker",
+  "private": true,
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.0",
+    "nanoid": "^3.3.7",
+    "qrcode": "^1.5.3"
+  }
+}

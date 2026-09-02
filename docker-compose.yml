@@ -1,0 +1,14 @@
+services:
+  regatta-tracker:
+    build: .
+    container_name: regatta-tracker
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Bitte ADMIN_TOKEN in einer .env Datei setzen}
+      PORT: 3000
+      STALE_AFTER_SECONDS: 90
+      MAX_TRAIL_POINTS: 1000
+    volumes:
+      - ./data:/app/data

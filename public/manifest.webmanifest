@@ -1,0 +1,17 @@
+{
+  "name": "Regatta Tracker",
+  "short_name": "Tracker",
+  "description": "Sendet die Live-Position dieses Bootes an den Regatta-Server",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f1720",
+  "theme_color": "#0f1720",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

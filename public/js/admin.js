@@ -1,0 +1,146 @@
+(() => {
+  'use strict';
+
+  const STORAGE_KEY = 'regatta-tracker:admin-token';
+
+  const els = {
+    loginCard: document.getElementById('login-card'),
+    mainCard: document.getElementById('main-card'),
+    tokenInput: document.getElementById('admin-token'),
+    loginBtn: document.getElementById('login-btn'),
+    loginError: document.getElementById('login-error'),
+    newName: document.getElementById('new-name'),
+    createBtn: document.getElementById('create-btn'),
+    createError: document.getElementById('create-error'),
+    list: document.getElementById('tracker-list')
+  };
+
+  let adminToken = localStorage.getItem(STORAGE_KEY) || '';
+
+  function api(path, options = {}) {
+    return fetch(path, {
+      ...options,
+      headers: { ...(options.headers || {}), 'x-admin-token': adminToken }
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  async function tryLogin(token) {
+    adminToken = token;
+    const res = await api('/api/admin/trackers');
+    if (!res.ok) {
+      adminToken = '';
+      throw new Error('Token abgelehnt - bitte pruefen.');
+    }
+    localStorage.setItem(STORAGE_KEY, token);
+    els.loginCard.style.display = 'none';
+    els.mainCard.style.display = 'block';
+    const data = await res.json();
+    renderList(data.trackers);
+  }
+
+  function trackerUrl(t) {
+    return `${location.origin}/t/${t.id}?token=${t.token}`;
+  }
+
+  function renderList(trackers) {
+    if (!trackers.length) {
+      els.list.innerHTML = '<p class="hint">Noch keine Tracker angelegt.</p>';
+      return;
+    }
+    els.list.innerHTML = trackers.map((t) => `
+      <div class="tracker-row" data-id="${t.id}">
+        <div class="qr-box"><img src="/api/admin/trackers/${t.id}/qrcode.png?adminToken=${encodeURIComponent(adminToken)}" alt="QR-Code" /></div>
+        <div class="grow">
+          <div style="font-weight:600">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-right:6px"></span>
+            ${escapeHtml(t.name)}
+          </div>
+          <div class="mono" style="word-break:break-all">${trackerUrl(t)}</div>
+        </div>
+        <button class="secondary copy-btn">Link kopieren</button>
+        <button class="secondary reset-btn">Spur loeschen</button>
+        <button class="danger delete-btn">Loeschen</button>
+      </div>
+    `).join('');
+
+    els.list.querySelectorAll('.copy-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.closest('.tracker-row').dataset.id;
+        const t = trackers.find((x) => x.id === id);
+        navigator.clipboard.writeText(trackerUrl(t)).then(() => {
+          btn.textContent = 'Kopiert!';
+          setTimeout(() => (btn.textContent = 'Link kopieren'), 1500);
+        });
+      });
+    });
+
+    els.list.querySelectorAll('.reset-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.closest('.tracker-row').dataset.id;
+        await api(`/api/admin/trackers/${id}/reset-trail`, { method: 'POST' });
+      });
+    });
+
+    els.list.querySelectorAll('.delete-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.closest('.tracker-row').dataset.id;
+        const t = trackers.find((x) => x.id === id);
+        if (!confirm(`Tracker "${t.name}" wirklich loeschen?`)) return;
+        const res = await api(`/api/admin/trackers/${id}`, { method: 'DELETE' });
+        if (res.ok) refresh();
+      });
+    });
+  }
+
+  async function refresh() {
+    const res = await api('/api/admin/trackers');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderList(data.trackers);
+  }
+
+  els.loginBtn.addEventListener('click', async () => {
+    els.loginError.style.display = 'none';
+    try {
+      await tryLogin(els.tokenInput.value.trim());
+    } catch (err) {
+      els.loginError.textContent = err.message;
+      els.loginError.style.display = 'block';
+    }
+  });
+
+  els.tokenInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') els.loginBtn.click();
+  });
+
+  els.createBtn.addEventListener('click', async () => {
+    els.createError.style.display = 'none';
+    const name = els.newName.value.trim();
+    const res = await api('/api/admin/trackers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      els.createError.textContent = data.error || 'Fehler beim Anlegen';
+      els.createError.style.display = 'block';
+      return;
+    }
+    els.newName.value = '';
+    refresh();
+  });
+
+  if (adminToken) {
+    tryLogin(adminToken).catch(() => {
+      els.loginCard.style.display = 'block';
+      els.mainCard.style.display = 'none';
+    });
+  }
+})();

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Roemis Regatta Tracker - Live</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <h1>🏁 Regatta Live-Tracker</h1>
+      <a class="admin-link" href="admin.html">Admin</a>
+    </header>
+    <div class="layout">
+      <aside id="sidebar">
+        <div id="boat-list"></div>
+        <p class="hint">Keine Boote? Im <a href="admin.html">Admin-Bereich</a> einen Tracker anlegen und den
+        Link/QR-Code an den Skipper schicken.</p>
+      </aside>
+      <main id="map"></main>
+    </div>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/dashboard.js"></script>
+</body>
+</html>
