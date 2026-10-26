@@ -6,6 +6,7 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const store = require('./store');
+const regatta = require('./regatta');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
@@ -18,7 +19,7 @@ if (!ADMIN_TOKEN) {
 }
 
 const app = express();
-app.use(express.json({ limit: '20kb' }));
+app.use(express.json({ limit: '500kb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ---------- Hilfsfunktionen ----------
@@ -70,6 +71,53 @@ app.post('/api/trackers/:id/position', (req, res) => {
 
   broadcast({ type: 'position', tracker: store.getPublicTracker(id) });
   res.json({ ok: true, entry });
+});
+
+// Mehrere (ggf. nachgesendete) Positionen auf einmal - der Handy-Client puffert bei Funkloch.
+app.post('/api/trackers/:id/positions', (req, res) => {
+  const { id } = req.params;
+  const auth = req.get('authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.body.token;
+  if (!store.getTracker(id)) return res.status(404).json({ error: 'Tracker unbekannt' });
+  if (!store.verifyToken(id, token)) return res.status(401).json({ error: 'Ungueltiges Token' });
+
+  const list = Array.isArray(req.body && req.body.positions) ? req.body.positions.slice(0, 1000) : [];
+  let accepted = 0;
+  for (const p of list) {
+    if (!p || !isFiniteNumber(p.lat) || !isFiniteNumber(p.lon) || !isFiniteNumber(p.ts)) continue;
+    if (Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180) continue;
+    store.recordPosition(id, {
+      lat: p.lat,
+      lon: p.lon,
+      accuracy: isFiniteNumber(p.accuracy) ? p.accuracy : null,
+      speed: isFiniteNumber(p.speed) ? p.speed : null,
+      heading: isFiniteNumber(p.heading) ? p.heading : null,
+      battery: isFiniteNumber(p.battery) ? p.battery : null,
+      ts: p.ts
+    });
+    accepted += 1;
+  }
+  if (accepted) broadcast({ type: 'position', tracker: store.getPublicTracker(id) });
+  res.json({ ok: true, accepted });
+});
+
+// Bootsregistrierung durch den Skipper selbst (Segelnummer, Steuermann, Yardstick-Klasse).
+app.put('/api/trackers/:id/registration', (req, res) => {
+  const auth = req.get('authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!store.getTracker(req.params.id)) return res.status(404).json({ error: 'Tracker unbekannt' });
+  if (!store.verifyToken(req.params.id, token)) return res.status(401).json({ error: 'Ungueltiges Token' });
+  res.json({ boat: regatta.registerBoat(req.params.id, req.body || {}) });
+});
+
+// Oeffentlich: Klassen, Registrierungen, Linie, Wettfahrten.
+app.get('/api/regatta', (req, res) => res.json(regatta.publicState()));
+app.get('/api/races/:id/results', (req, res) => res.json(regatta.computeResults(regatta.getRace(req.params.id))));
+app.get('/api/races/:id/results.csv', (req, res) => {
+  const race = regatta.getRace(req.params.id);
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="ergebnis-${race.name.replace(/[^\w-]+/g, '_')}.csv"`);
+  res.send(regatta.toCsv(regatta.computeResults(race)));
 });
 
 // Metadaten eines Trackers oeffentlich abrufbar (z.B. fuer die Tracker-Seite selbst: Name/Farbe anzeigen).
@@ -127,6 +175,51 @@ app.get('/api/admin/trackers/:id/qrcode.png', requireAdmin, async (req, res) => 
   }
 });
 
+// ---------- Admin-API Regatta (Wettfahrtleitung) ----------
+
+app.post('/api/admin/classes', requireAdmin, (req, res) => {
+  res.status(201).json({ class: regatta.addClass(req.body.name, req.body.yardstick) });
+});
+app.post('/api/admin/classes/import', requireAdmin, (req, res) => {
+  res.json(regatta.importClasses(req.body.text, !!req.body.replace));
+});
+app.delete('/api/admin/classes/:id', requireAdmin, (req, res) => {
+  regatta.deleteClass(req.params.id);
+  res.json({ ok: true });
+});
+app.put('/api/admin/trackers/:id/registration', requireAdmin, (req, res) => {
+  res.json({ boat: regatta.registerBoat(req.params.id, req.body || {}) });
+});
+app.delete('/api/admin/trackers/:id/registration', requireAdmin, (req, res) => {
+  regatta.unregisterBoat(req.params.id);
+  res.json({ ok: true });
+});
+app.put('/api/admin/line', requireAdmin, (req, res) => {
+  res.json({ line: regatta.setLine(req.body) });
+});
+app.post('/api/admin/races', requireAdmin, (req, res) => {
+  res.status(201).json({ race: regatta.createRace(req.body || {}) });
+});
+app.patch('/api/admin/races/:id', requireAdmin, (req, res) => {
+  res.json({ race: regatta.updateRace(req.params.id, req.body || {}) });
+});
+app.delete('/api/admin/races/:id', requireAdmin, (req, res) => {
+  regatta.deleteRace(req.params.id);
+  res.json({ ok: true });
+});
+app.post('/api/admin/races/:id/start', requireAdmin, (req, res) => {
+  res.json({ race: regatta.startRace(req.params.id, req.body && req.body.ts) });
+});
+app.post('/api/admin/races/:id/clear-start', requireAdmin, (req, res) => {
+  res.json({ race: regatta.clearStart(req.params.id) });
+});
+app.put('/api/admin/races/:id/override/:trackerId', requireAdmin, (req, res) => {
+  res.json({ race: regatta.setOverride(req.params.id, req.params.trackerId, req.body || {}) });
+});
+app.post('/api/admin/races/:id/official', requireAdmin, (req, res) => {
+  res.json({ race: regatta.setOfficial(req.params.id, !!(req.body && req.body.official)) });
+});
+
 // ---------- Seiten ----------
 
 app.get('/t/:id', (req, res) => {
@@ -134,6 +227,12 @@ app.get('/t/:id', (req, res) => {
 });
 
 app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+
+// Fehler aus der Regatta-Logik (mit .status) als JSON zurueckgeben.
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  res.status(err.status || 500).json({ error: err.message || 'Serverfehler' });
+});
 
 // ---------- HTTP + WebSocket Server ----------
 

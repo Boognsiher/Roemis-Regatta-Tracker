@@ -13,6 +13,8 @@ const { nanoid, customAlphabet } = require('nanoid');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const TRACKERS_FILE = path.join(DATA_DIR, 'trackers.json');
 const POSITIONS_FILE = path.join(DATA_DIR, 'positions.json');
+// Vollstaendige, unbegrenzte Aufzeichnung aller Fixes (Grundlage fuer die offizielle Zeitmessung).
+const HISTORY_DIR = path.join(DATA_DIR, 'history');
 
 // Wie viele Punkte pro Tracker als "Spur" (Track auf der Karte) behalten werden.
 const MAX_TRAIL_POINTS = parseInt(process.env.MAX_TRAIL_POINTS || '1000', 10);
@@ -99,6 +101,7 @@ function deleteTracker(id) {
   const existed = !!trackers[id];
   delete trackers[id];
   delete positions[id];
+  try { fs.unlinkSync(historyFile(id)); } catch { /* keine Historie vorhanden */ }
   if (existed) scheduleSave();
   return existed;
 }
@@ -116,6 +119,35 @@ function renameTracker(id, name) {
   return t;
 }
 
+function historyFile(id) {
+  return path.join(HISTORY_DIR, `${id}.jsonl`);
+}
+
+function appendHistory(id, entry) {
+  try {
+    fs.mkdirSync(HISTORY_DIR, { recursive: true });
+    fs.appendFileSync(historyFile(id), JSON.stringify(entry) + '\n');
+  } catch (err) {
+    console.error('[history] Schreiben fehlgeschlagen:', err.message);
+  }
+}
+
+/** Alle aufgezeichneten Fixes eines Trackers (ungeordnet, ggf. mit Duplikaten). */
+function readHistory(id) {
+  let raw;
+  try {
+    raw = fs.readFileSync(historyFile(id), 'utf8');
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const line of raw.split('\n')) {
+    if (!line) continue;
+    try { out.push(JSON.parse(line)); } catch { /* halbe Zeile nach Absturz ueberspringen */ }
+  }
+  return out;
+}
+
 function recordPosition(id, pos) {
   if (!positions[id]) positions[id] = { latest: null, trail: [] };
   const entry = {
@@ -127,8 +159,12 @@ function recordPosition(id, pos) {
     battery: pos.battery ?? null, // 0..1
     ts: pos.ts || Date.now()
   };
-  positions[id].latest = entry;
-  positions[id].trail.push(entry);
+  appendHistory(id, entry);
+  const trail = positions[id].trail;
+  // Nachgesendete (aeltere) Fixes duerfen die "aktuelle" Position nicht ueberschreiben.
+  if (!positions[id].latest || entry.ts >= positions[id].latest.ts) positions[id].latest = entry;
+  trail.push(entry);
+  if (trail.length > 1 && trail[trail.length - 2].ts > entry.ts) trail.sort((x, y) => x.ts - y.ts);
   if (positions[id].trail.length > MAX_TRAIL_POINTS) {
     positions[id].trail.splice(0, positions[id].trail.length - MAX_TRAIL_POINTS);
   }
@@ -167,6 +203,10 @@ function clearTrail(id) {
 }
 
 module.exports = {
+  readHistory,
+  loadJson,
+  saveJsonAtomic,
+  DATA_DIR,
   createTracker,
   listTrackers,
   getTracker,

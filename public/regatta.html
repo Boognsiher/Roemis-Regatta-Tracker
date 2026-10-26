@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Regatta - Wettfahrtleitung</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="wide-wrap">
+    <p><a href="index.html" style="color:var(--muted)">← Live-Karte</a> ·
+       <a href="admin.html" style="color:var(--muted)">Tracker-Admin</a> ·
+       <a href="results.html" style="color:var(--muted)">Oeffentliche Ergebnisse</a></p>
+    <h1>Wettfahrtleitung</h1>
+    <p id="no-login" class="error-msg" style="display:none">Nicht angemeldet - bitte zuerst im
+      <a href="admin.html">Admin-Bereich</a> anmelden.</p>
+
+    <div id="main" style="display:none">
+      <div class="card">
+        <h2 style="margin-top:0">1. Yardstick-Liste</h2>
+        <p class="hint">Liste einfuegen (eine Klasse pro Zeile: <span class="mono">Name;Zahl</span>, auch
+          Komma oder Tab, z.B. aus Excel kopiert) oder einzelne Klasse hinzufuegen. Eintraege mit gleichem Namen
+          werden aktualisiert.</p>
+        <textarea id="ys-text" placeholder="Laser;114&#10;Optimist;165&#10;420er;103"></textarea>
+        <div class="row" style="margin-top:0.5rem">
+          <button id="ys-import">Liste importieren</button>
+          <label style="margin:0"><input type="checkbox" id="ys-replace" /> vorhandene (unbenutzte) ersetzen</label>
+          <span id="ys-msg" class="hint"></span>
+        </div>
+        <div class="row">
+          <div class="field"><label for="ys-name">Klasse</label><input type="text" id="ys-name" /></div>
+          <div class="field"><label for="ys-num">Yardstick</label><input type="number" id="ys-num" step="0.1" style="width:100px" /></div>
+          <button id="ys-add" class="secondary">Hinzufuegen</button>
+        </div>
+        <div id="ys-list" class="hint"></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">2. Boote registrieren</h2>
+        <p class="hint">Skipper koennen das auch selbst auf ihrer Tracker-Seite tun.</p>
+        <div id="boats"></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">3. Start-/Ziellinie</h2>
+        <p class="hint">Start und Ziel sind dieselbe Linie. Punkt waehlen und auf die Karte klicken, oder die
+          Position eines Trackers uebernehmen (z.B. Startschiff und Pin-Boot). Die Referenz-Tonne (z.B.
+          Luv-Tonne) legt die Kursseite fest.</p>
+        <div id="line-map"></div>
+        <div id="line-controls"></div>
+        <div class="row"><button id="line-save">Linie speichern</button><span id="line-msg" class="hint"></span></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">4. Wettfahrten</h2>
+        <div class="row">
+          <div class="field"><label for="race-name">Name</label><input type="text" id="race-name" placeholder="Wettfahrt 1" /></div>
+          <div class="field"><label for="race-laps">Runden</label><input type="number" id="race-laps" value="2" min="1" max="10" style="width:80px" /></div>
+          <button id="race-create">Wettfahrt anlegen</button>
+        </div>
+        <p id="race-error" class="error-msg" style="display:none"></p>
+        <div id="races"></div>
+      </div>
+    </div>
+  </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/regatta.js"></script>
+</body>
+</html>

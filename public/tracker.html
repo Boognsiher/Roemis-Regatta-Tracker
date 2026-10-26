@@ -4,9 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Regatta Tracker</title>
-<link rel="manifest" href="manifest.webmanifest" />
+<link rel="manifest" href="/manifest.webmanifest" />
 <meta name="theme-color" content="#0f1720" />
-<link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
   <div class="tracker-page">
@@ -24,11 +24,21 @@
       <div>Geschwindigkeit: <span id="stat-speed">–</span></div>
       <div>Gesendete Updates: <span id="stat-count">0</span></div>
       <div>Akku: <span id="stat-battery">–</span></div>
+      <div>Im Puffer: <span id="stat-queue">0</span></div>
     </div>
+
+    <details class="reg-box">
+      <summary>Boot registrieren (Segelnummer / Klasse)</summary>
+      <div class="field"><label for="reg-sail">Segelnummer</label><input type="text" id="reg-sail" /></div>
+      <div class="field"><label for="reg-helm">Steuermann/-frau</label><input type="text" id="reg-helm" /></div>
+      <div class="field"><label for="reg-class">Klasse (Yardstick)</label><select id="reg-class"></select></div>
+      <button id="reg-btn" class="secondary">Speichern</button>
+      <span id="reg-msg" class="hint"></span>
+    </details>
 
     <p id="setup-error" class="error-msg" style="display:none"></p>
   </div>
 
-<script src="js/tracker.js"></script>
+<script src="/js/tracker.js"></script>
 </body>
 </html>

@@ -4,3 +4,4 @@ data/*.json
 !data/.gitkeep
 *.log
 .DS_Store
+data/history/

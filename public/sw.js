@@ -2,7 +2,7 @@
 // damit die Tracker-Seite auch bei kurzzeitig schlechtem Netz sofort startet.
 // Die Positions-Uebertragung selbst braucht natuerlich trotzdem eine aktive Verbindung.
 
-const CACHE = 'regatta-tracker-shell-v1';
+const CACHE = 'regatta-tracker-shell-v2';
 const SHELL_FILES = ['tracker.html', 'css/style.css', 'js/tracker.js', 'manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {

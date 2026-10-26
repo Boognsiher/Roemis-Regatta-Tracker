@@ -56,6 +56,37 @@ ADMIN_TOKEN=mein-geheimes-token npm start
    sein, da die Position ueber das Internet an den Server gesendet wird.
 5. Auf der Live-Karte (`/`) erscheint das Boot automatisch, sobald die erste Position eintrifft.
 
+## Zeitmessung und Yardstick-Auswertung
+
+Seiten: **Wettfahrtleitung** `/regatta.html` (Admin-Login wie `/admin.html`), oeffentliche Ergebnisse `/results.html`.
+
+Ablauf:
+
+1. **Yardstick-Liste** einlesen (Text/CSV, eine Klasse pro Zeile `Name;Zahl`) oder Klassen einzeln anlegen.
+2. **Boote registrieren:** Segelnummer, Steuermann, Klasse - durch die Wettfahrtleitung oder vom Skipper selbst
+   auf seiner Tracker-Seite ("Boot registrieren").
+3. **Start-/Ziellinie** setzen (Start = Ziel): Punkt A/B per Kartenklick oder per Tracker-Position
+   (z.B. Startschiff + Pin-Boot) plus Referenz-Tonne (Luv-Tonne), die die Kursseite festlegt.
+4. **Wettfahrt anlegen** (Rundenzahl, Standard 2) und **Startsignal** setzen ("JETZT" oder sekundengenau).
+5. Ergebnis erscheint laufend, ist **vorlaeufig**, bis die Wettfahrtleitung es **offiziell freigibt** (dann gesperrt).
+
+Berechnung:
+
+- Gruppenstart: gesegelte Zeit = Zieldurchgang - Startsignal. Ein Boot startet mit dem Durchqueren der Linie
+  Richtung Kursseite; jede Rueckkehr durch die Linie zaehlt eine Runde, die letzte ist das Ziel.
+- Durchgangszeit = lineare Interpolation zwischen den zwei GPS-Fixes beidseits der Linie. Zeitstempel sind
+  GPS-Zeit (nicht die Handy-Uhr). Typische Genauigkeit bei 2s-Takt: unter 1-2 s; ausgewiesen als `±`.
+- Berechnete Zeit = gesegelte Zeit * 100 / Yardstick, Rang nach auf ganze Sekunden gerundeter Zeit
+  (gleiche Zeit = gleicher Rang).
+- Wettfahrtleitung kann pro Boot korrigieren: Status (DNS/DNF/DSQ/OCS/RET/DNC), Zielzeit manuell,
+  Zeitstrafe (Sekunden auf die berechnete Zeit), Bemerkung. Auffaelligkeiten (OCS-Verdacht, GPS-Luecke am
+  Ziel, ignoriertes GPS-Zittern) werden als Warnung angezeigt.
+- Das Handy zeichnet alle 2 s auf und puffert bei Funkloch (bis ~3 h), Nachsenden ist korrekt zeitgestempelt.
+  Der Server speichert alle Fixes dauerhaft in `data/history/<tracker>.jsonl` (unabhaengig von der Karten-Spur).
+- Export: CSV pro Wettfahrt.
+
+Tests der Rechenlogik: `npm test`.
+
 ## Damit das auch auf dem Wasser funktioniert (wichtig!)
 
 Der Server muss aus dem Mobilfunknetz heraus erreichbar sein, sonst kommen keine Positionen an.
@@ -82,7 +113,7 @@ zuverlaessig ueber **https://** (oder `http://localhost`). Ein Reverse Proxy mit
 | `ADMIN_TOKEN` | - (Pflicht) | Passwort fuer den Admin-Bereich |
 | `PORT` | `3000` | HTTP-Port |
 | `STALE_AFTER_SECONDS` | `90` | Ab wann ein Tracker als "offline" markiert wird |
-| `MAX_TRAIL_POINTS` | `1000` | Wie viele Punkte Spur pro Tracker gespeichert werden |
+| `MAX_TRAIL_POINTS` | `1000` | Wie viele Punkte Spur pro Tracker auf der Karte gehalten werden (Zeitmessung nutzt die volle Historie) |
 | `DATA_DIR` | `./data` | Ordner fuer die JSON-Datenablage |
 
 ## Guenstige DIY-Hardware-Tracker statt Smartphone
