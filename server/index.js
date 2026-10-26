@@ -10,6 +10,8 @@ const regatta = require('./regatta');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+// Optional: eigenes Token nur fuer das Gateway-Handy (darf nur Positionen melden, nichts verwalten).
+const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN || '';
 
 if (!ADMIN_TOKEN) {
   console.warn(
@@ -29,6 +31,14 @@ function requireAdmin(req, res, next) {
   if (!ADMIN_TOKEN || supplied !== ADMIN_TOKEN) {
     return res.status(401).json({ error: 'Ungueltiges oder fehlendes Admin-Token' });
   }
+  next();
+}
+
+function requireGateway(req, res, next) {
+  const admin = req.get('x-admin-token') || '';
+  const gw = req.get('x-gateway-token') || '';
+  const ok = (ADMIN_TOKEN && admin === ADMIN_TOKEN) || (GATEWAY_TOKEN && gw === GATEWAY_TOKEN);
+  if (!ok) return res.status(401).json({ error: 'Ungueltiges Gateway-/Admin-Token' });
   next();
 }
 
@@ -127,6 +137,37 @@ app.get('/api/trackers/:id', (req, res) => {
   res.json(t);
 });
 
+// ---------- Gateway-API (Handy mit LoRa-Master-ESP32) ----------
+
+// Mehrere Positionen verschiedener Boote auf einmal. Jeder Eintrag identifiziert das Boot entweder
+// ueber die LoRa-Nummer ("id") oder direkt ueber "trackerId" (z.B. Handy-GPS des eigenen Boots).
+app.post('/api/gateway/positions', requireGateway, (req, res) => {
+  const list = Array.isArray(req.body && req.body.positions) ? req.body.positions.slice(0, 2000) : [];
+  const touched = new Set();
+  const unknown = new Set();
+  let accepted = 0;
+  const maxTs = Date.now() + 5 * 60 * 1000;
+  for (const p of list) {
+    if (!p || !isFiniteNumber(p.lat) || !isFiniteNumber(p.lon) || !isFiniteNumber(p.ts)) continue;
+    if (Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180 || p.ts > maxTs) continue;
+    const tracker = p.trackerId ? store.getTracker(p.trackerId) : store.getTrackerByLoraId(p.id);
+    if (!tracker) { unknown.add(p.trackerId || p.id); continue; }
+    store.recordPosition(tracker.id, {
+      lat: p.lat,
+      lon: p.lon,
+      accuracy: isFiniteNumber(p.accuracy) ? p.accuracy : null,
+      speed: isFiniteNumber(p.speed) ? p.speed : null,
+      heading: isFiniteNumber(p.heading) ? p.heading : null,
+      battery: isFiniteNumber(p.battery) ? p.battery : null,
+      ts: p.ts
+    });
+    touched.add(tracker.id);
+    accepted += 1;
+  }
+  for (const id of touched) broadcast({ type: 'position', tracker: store.getPublicTracker(id) });
+  res.json({ ok: true, accepted, unknown: [...unknown] });
+});
+
 // ---------- Admin-API (Tracker anlegen/verwalten) ----------
 
 app.get('/api/admin/trackers', requireAdmin, (req, res) => {
@@ -140,6 +181,11 @@ app.post('/api/admin/trackers', requireAdmin, (req, res) => {
 });
 
 app.patch('/api/admin/trackers/:id', requireAdmin, (req, res) => {
+  if (req.body && 'loraId' in req.body) {
+    const n = req.body.loraId === null || req.body.loraId === '' ? null : Number(req.body.loraId);
+    const err = store.setLoraId(req.params.id, n);
+    if (err) return res.status(400).json({ error: err });
+  }
   const t = store.renameTracker(req.params.id, req.body && req.body.name);
   if (!t) return res.status(404).json({ error: 'Tracker unbekannt' });
   broadcast({ type: 'tracker-updated', tracker: store.getPublicTracker(t.id) });

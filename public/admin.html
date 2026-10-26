@@ -10,7 +10,7 @@
   <div class="admin-wrap">
     <p><a href="index.html" style="color:var(--muted)">← zurueck zur Live-Karte</a></p>
     <h1>Admin</h1>
-    <p><a href="regatta.html" style="color:var(--accent)">→ Wettfahrtleitung (Yardstick, Linie, Wettfahrten)</a></p>
+    <p><a href="regatta.html" style="color:var(--accent)">→ Wettfahrtleitung (Yardstick, Linie, Wettfahrten)</a> · <a href="gateway.html" style="color:var(--accent)">→ Gateway (LoRa-Master)</a></p>
 
     <div id="login-card" class="card">
       <div class="field">
@@ -24,6 +24,7 @@
     <div id="main-card" style="display:none">
       <div class="card">
         <h2 style="margin-top:0">Neuen Tracker anlegen</h2>
+        <p class="hint">Jeder Tracker bekommt automatisch eine LoRa-Nr (= TRACKER_ID in der Firmware des Funk-Trackers).</p>
         <div class="field">
           <label for="new-name">Name (z.B. Bootsname / Segelnummer)</label>
           <input type="text" id="new-name" placeholder="z.B. Regatta-Boot 1" />

@@ -5,3 +5,4 @@ data/*.json
 *.log
 .DS_Store
 data/history/
+.pio/

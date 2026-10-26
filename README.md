@@ -116,6 +116,13 @@ zuverlaessig ueber **https://** (oder `http://localhost`). Ein Reverse Proxy mit
 | `MAX_TRAIL_POINTS` | `1000` | Wie viele Punkte Spur pro Tracker auf der Karte gehalten werden (Zeitmessung nutzt die volle Historie) |
 | `DATA_DIR` | `./data` | Ordner fuer die JSON-Datenablage |
 
+## LoRa-Funk-Tracker (ESP32) + Master-Handy
+
+Fuer ~20 Boote ohne Handy im Boot: Funk-Tracker (ESP32 + GPS + LoRa) senden an einen Master-ESP32 in deinem Boot,
+dein Android-Handy holt die Daten per Bluetooth (`/gateway.html`) und leitet sie an den Server weiter. Firmware,
+Hardwareliste, Verdrahtung und Ablauf: siehe [`firmware/README.md`](firmware/README.md). Server-Endpunkt:
+`POST /api/gateway/positions` (Header `x-gateway-token`, optional `GATEWAY_TOKEN` in `.env`).
+
 ## Guenstige DIY-Hardware-Tracker statt Smartphone
 
 Die Server-API ist bewusst simpel gehalten (ein HTTP-POST mit Bearer-Token), damit spaeter auch

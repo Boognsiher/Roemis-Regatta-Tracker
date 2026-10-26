@@ -73,6 +73,13 @@ function pickColor() {
   return free || COLOR_PALETTE[Object.keys(trackers).length % COLOR_PALETTE.length];
 }
 
+/** Kleinste freie LoRa-Nummer (1..250) - so heisst das Funk-Geraet in der Firmware (TRACKER_ID). */
+function nextLoraId() {
+  const used = new Set(Object.values(trackers).map((t) => t.loraId).filter((n) => n != null));
+  for (let n = 1; n <= 250; n += 1) if (!used.has(n)) return n;
+  return null;
+}
+
 function createTracker(name) {
   const id = genId();
   const token = nanoid(32);
@@ -81,6 +88,7 @@ function createTracker(name) {
     name: (name || `Tracker ${id}`).slice(0, 60),
     token,
     color: pickColor(),
+    loraId: nextLoraId(),
     createdAt: Date.now()
   };
   trackers[id] = tracker;
@@ -148,6 +156,22 @@ function readHistory(id) {
   return out;
 }
 
+function getTrackerByLoraId(n) {
+  return Object.values(trackers).find((t) => t.loraId === n) || null;
+}
+
+/** LoRa-Nummer eines Trackers aendern (null = keine). Gibt Fehlermeldung als String zurueck oder null. */
+function setLoraId(id, n) {
+  const t = trackers[id];
+  if (!t) return 'Tracker unbekannt';
+  if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 250)) return 'LoRa-Nr muss 1-250 sein';
+  const other = n === null ? null : getTrackerByLoraId(n);
+  if (other && other.id !== id) return `LoRa-Nr ${n} ist schon bei "${other.name}" vergeben`;
+  t.loraId = n;
+  scheduleSave();
+  return null;
+}
+
 function recordPosition(id, pos) {
   if (!positions[id]) positions[id] = { latest: null, trail: [] };
   const entry = {
@@ -203,6 +227,8 @@ function clearTrail(id) {
 }
 
 module.exports = {
+  getTrackerByLoraId,
+  setLoraId,
   readHistory,
   loadJson,
   saveJsonAtomic,

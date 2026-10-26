@@ -61,6 +61,8 @@
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-right:6px"></span>
             ${escapeHtml(t.name)}
           </div>
+          <div style="margin:4px 0"><label style="display:inline">LoRa-Nr</label>
+            <input type="number" class="lora-id" min="1" max="250" value="${t.loraId ?? ''}" style="width:70px" /></div>
           <div class="mono" style="word-break:break-all">${trackerUrl(t)}</div>
         </div>
         <button class="secondary copy-btn">Link kopieren</button>
@@ -77,6 +79,19 @@
           btn.textContent = 'Kopiert!';
           setTimeout(() => (btn.textContent = 'Link kopieren'), 1500);
         });
+      });
+    });
+
+    els.list.querySelectorAll('.lora-id').forEach((inp) => {
+      inp.addEventListener('change', async () => {
+        const id = inp.closest('.tracker-row').dataset.id;
+        const res = await api(`/api/admin/trackers/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ loraId: inp.value === '' ? null : Number(inp.value) })
+        });
+        if (!res.ok) { alert((await res.json().catch(() => ({}))).error || 'Fehler'); }
+        refresh();
       });
     });
 
