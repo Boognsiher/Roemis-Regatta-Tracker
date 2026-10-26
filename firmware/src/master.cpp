@@ -10,6 +10,7 @@
 #include <NimBLEDevice.h>
 #include "config.h"
 #include "protocol.h"
+#include "board.h"
 
 SX1262 radio = new Module(LORA_NSS, LORA_DIO1, LORA_RST, LORA_BUSY);
 
@@ -44,6 +45,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("Regatta-Master");
+  boardInit(true);
 
   SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_NSS);
   int st = radio.begin(LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SF, LORA_CR, LORA_SYNC_WORD, LORA_TX_POWER_DBM,
@@ -53,6 +55,7 @@ void setup() {
     for (;;) delay(1000);
   }
   radio.setCRC(true);
+  if (LORA_DIO2_RF_SWITCH) radio.setDio2AsRfSwitch(true);
   radio.setDio1Action(onRx);
   radio.startReceive();
 

@@ -22,6 +22,7 @@
 #include <TinyGPSPlus.h>
 #include "config.h"
 #include "protocol.h"
+#include "board.h"
 
 #define LOG_PATH            "/log.bin"
 #define OFFSET_PATH         "/uploaded.txt"
@@ -51,17 +52,6 @@ static int64_t daysFromCivil(int y, unsigned m, unsigned d) {
   const unsigned doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;
   const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
   return era * 146097 + (int64_t)doe - 719468;
-}
-
-float readBattery() {
-#if BAT_ADC_PIN >= 0
-  if (BAT_CTRL_PIN >= 0) { pinMode(BAT_CTRL_PIN, OUTPUT); digitalWrite(BAT_CTRL_PIN, LOW); }
-  float v = analogReadMilliVolts(BAT_ADC_PIN) / 1000.0f * BAT_DIVIDER;
-  float pct = (v - 3.3f) / (4.2f - 3.3f);
-  return pct < 0 ? 0 : (pct > 1 ? 1 : pct);
-#else
-  return -1;
-#endif
 }
 
 // ---------- Flash-Log ----------
@@ -265,6 +255,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.printf("Regatta-Logger, ID %d\n", TRACKER_ID);
+  boardInit(false);
 
   fsMutex = xSemaphoreCreateMutex();
   fsOk = LittleFS.begin(true);
@@ -298,7 +289,7 @@ void loop() {
         p.lon = (int32_t)lround(gps.location.lng() * 1e6);
         p.speedCms = gps.speed.isValid() ? (uint16_t)constrain((long)lround(gps.speed.mps() * 100), 0L, 65534L) : 0;
         p.headingDeg10 = gps.course.isValid() ? (uint16_t)lround(gps.course.deg() * 10) : 0xFFFF;
-        float b = readBattery();
+        float b = boardBattery();
         p.battPct = b < 0 ? 255 : (uint8_t)lround(b * 100);
         p.hdop10 = gps.hdop.isValid() ? (uint8_t)constrain((long)lround(gps.hdop.hdop() * 10), 0L, 254L) : 255;
         logPacket(p);

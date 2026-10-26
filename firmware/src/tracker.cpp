@@ -11,6 +11,7 @@
 #include <LittleFS.h>
 #include "config.h"
 #include "protocol.h"
+#include "board.h"
 
 SX1262 radio = new Module(LORA_NSS, LORA_DIO1, LORA_RST, LORA_BUSY);
 TinyGPSPlus gps;
@@ -52,18 +53,6 @@ struct Fix {
   float speedMs = 0, course = -1, hdop = -1;
 } lastFix;
 
-float readBattery() {
-#if BAT_ADC_PIN >= 0
-  if (BAT_CTRL_PIN >= 0) { pinMode(BAT_CTRL_PIN, OUTPUT); digitalWrite(BAT_CTRL_PIN, LOW); }
-  uint32_t mv = analogReadMilliVolts(BAT_ADC_PIN);
-  float v = mv / 1000.0f * BAT_DIVIDER;
-  float pct = (v - 3.3f) / (4.2f - 3.3f); // grobe LiPo-Naeherung
-  return pct < 0 ? 0 : (pct > 1 ? 1 : pct);
-#else
-  return -1;
-#endif
-}
-
 void fillPacket(TrackerPacket &p, const Fix &f) {
   p.magic = PKT_MAGIC;
   p.id = TRACKER_ID;
@@ -73,7 +62,7 @@ void fillPacket(TrackerPacket &p, const Fix &f) {
   p.lon = (int32_t)lround(f.lon * 1e6);
   p.speedCms = (uint16_t)constrain((long)lround(f.speedMs * 100), 0L, 65534L);
   p.headingDeg10 = f.course < 0 ? 0xFFFF : (uint16_t)lround(f.course * 10);
-  float b = readBattery();
+  float b = boardBattery();
   p.battPct = b < 0 ? 255 : (uint8_t)lround(b * 100);
   p.hdop10 = f.hdop < 0 ? 255 : (uint8_t)constrain((long)lround(f.hdop * 10), 0L, 254L);
 }
@@ -132,6 +121,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.printf("Regatta-Tracker, ID %d\n", TRACKER_ID);
+  boardInit(true);
 
   fsOk = LittleFS.begin(true);
   if (fsOk) logFile = LittleFS.open("/log.bin", "a");
@@ -147,6 +137,7 @@ void setup() {
     for (;;) delay(1000);
   }
   radio.setCRC(true);
+  if (LORA_DIO2_RF_SWITCH) radio.setDio2AsRfSwitch(true);
   Serial.println("LoRa bereit");
 }
 

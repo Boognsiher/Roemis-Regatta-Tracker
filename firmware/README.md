@@ -37,6 +37,39 @@ Grenzen: maximal etwa 8-10 gleichzeitig verbundene Geraete pro Android-Hotspot (
 Der Flash reicht fuer etwa 20 Stunden Aufzeichnung (ca. 75 KB pro Stunde). Befehle seriell: `d` Log ausgeben,
 `e` Log loeschen (nach der Regatta empfohlen), `s` Status, `u` Upload sofort versuchen.
 
+## LilyGO T-Beam V1.2 (ESP32 + SX1262 + GPS + 18650)
+
+Fertiges Profil `BOARD_TBEAM_V12` (Pins in `include/config.h`, Strom-Chip in `include/board.h`). Drei Programme:
+
+```bash
+pio run -e logger_tbeam  -t upload   # Hotspot-Logger, LoRa aus (spart Strom)
+pio run -e tracker_tbeam -t upload   # LoRa-Funk-Tracker
+pio run -e master_tbeam  -t upload   # LoRa-Master (auch ein T-Beam, GPS bleibt ungenutzt)
+```
+
+Wichtig:
+- **868-MHz-Version** (SX1262) kaufen, V1.2 mit **AXP2101**-Strom-Chip. Bei V1.0/V1.1 (AXP192) meldet die
+  Firmware "PMU (AXP2101) nicht gefunden" - dafuer ist `board.h` noch nicht angepasst.
+- GPS und LoRa bekommen auf dem T-Beam nur Strom, wenn der Strom-Chip initialisiert ist. Das macht `boardInit()`.
+- 18650-Akku (nicht im Lieferumfang, geschuetzte Zelle empfohlen) einsetzen, Laden per USB-C. Akkustand kommt vom
+  Strom-Chip und wird im Paket / Upload mitgeschickt.
+- **Pins und TCXO-Spannung (1.8 V) stammen aus der Meshtastic-/LilyGO-Belegung und sind noch nicht an echter
+  Hardware geprueft.** Bei "LoRa-Init fehlgeschlagen" zuerst `LORA_*` und `LORA_TCXO_V` in `config.h` gegen den
+  Schaltplan deiner Revision pruefen.
+- Antenne vor dem Einschalten anschliessen (LoRa-Antenne am SMA-Anschluss, GPS-Keramikantenne ist verbaut/beiliegend).
+
+### Direkt mit LoRa starten (T-Beam)
+
+Ja, das geht ohne Umbau: fuer 5 Boote **5 x `tracker_tbeam`** (TRACKER_ID = LoRa-Nr aus dem Admin, 1..5) plus
+**1 x `master_tbeam`** bei dir im Boot, dann Gateway-Seite am Android-Handy (siehe unten "Ablauf am Regattatag").
+Beachte:
+- LoRa hat keine Quittung, einzelne Pakete koennen fehlen. Jeder LoRa-Tracker schreibt darum zusaetzlich das Flash-Log;
+  Luecken schliesst du nach der Regatta per USB (`d` im seriellen Monitor, dann `scripts/upload-log.js`).
+  Das Hotspot-Upload gibt es bisher nur im `logger`-Programm.
+- Die Zeitmessung nutzt die GPS-Zeit aus den Paketen. Bei Paketverlust um den Zieldurchgang zeigt das Ergebnis
+  `±` und eine Warnung; mit dem Flash-Log kannst du das nachtraeglich exakt machen.
+- Empfehlung fuer den ersten Test: zuerst `logger_tbeam` (Hotspot) auf einem Board pruefen, dann LoRa mit zwei Boards.
+
 ---
 
 # LoRa-Live (optional, spaeter)

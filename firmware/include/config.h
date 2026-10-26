@@ -37,12 +37,33 @@
   #define LORA_BUSY  13
   #define LORA_DIO1  14
   #define LORA_TCXO_V 1.8f       // Heltec V3 hat einen TCXO
+  #define LORA_DIO2_RF_SWITCH 1  // DIO2 steuert den Antennenschalter
   #define GPS_RX_PIN 4           // ESP32 empfaengt <- GPS-TX
   #define GPS_TX_PIN 5
   #define GPS_PPS_PIN 6          // -1 wenn PPS nicht verdrahtet
   #define BAT_ADC_PIN 1
   #define BAT_CTRL_PIN 37        // Heltec V3: LOW = Spannungsteiler aktiv
   #define BAT_DIVIDER 4.9f
+#elif defined(BOARD_TBEAM_V12)
+  // LilyGO T-Beam V1.2 (ESP32 + SX1262 + GPS, Strom-Chip AXP2101). Pins nach Meshtastic/LilyGO-Belegung -
+  // vor dem ersten Einsatz mit dem Schaltplan deiner Revision vergleichen!
+  #define LORA_SCK   5
+  #define LORA_MISO  19
+  #define LORA_MOSI  27
+  #define LORA_NSS   18
+  #define LORA_RST   23
+  #define LORA_BUSY  32
+  #define LORA_DIO1  33
+  #define LORA_TCXO_V 1.8f
+  #define LORA_DIO2_RF_SWITCH 1
+  #define GPS_RX_PIN 34          // ESP32 empfaengt <- GPS-TX
+  #define GPS_TX_PIN 12
+  #define GPS_PPS_PIN 37         // nur Eingang; fuer den Logger nicht noetig
+  #define TBEAM_SDA  21          // I2C zum Strom-Chip
+  #define TBEAM_SCL  22
+  #define BAT_ADC_PIN -1         // Akkustand kommt vom Strom-Chip (board.h)
+  #define BAT_CTRL_PIN -1
+  #define BAT_DIVIDER 1.0f
 #else
   // Allgemeiner ESP32-S3-DevKit + SX1262-Modul (z.B. Waveshare Core1262 / EByte E22-900M22S). ANPASSEN!
   #define LORA_SCK   12
@@ -53,6 +74,7 @@
   #define LORA_BUSY  8
   #define LORA_DIO1  3
   #define LORA_TCXO_V 0.0f       // 0 = kein TCXO; bei Modulen mit TCXO 1.8 (Datenblatt!)
+  #define LORA_DIO2_RF_SWITCH 0  // 1, wenn DIO2 den Antennenschalter steuert (Datenblatt/Schaltung des Moduls)
   #define GPS_RX_PIN 16
   #define GPS_TX_PIN 17
   #define GPS_PPS_PIN 15
