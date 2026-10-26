@@ -116,7 +116,13 @@ zuverlaessig ueber **https://** (oder `http://localhost`). Ein Reverse Proxy mit
 | `MAX_TRAIL_POINTS` | `1000` | Wie viele Punkte Spur pro Tracker auf der Karte gehalten werden (Zeitmessung nutzt die volle Historie) |
 | `DATA_DIR` | `./data` | Ordner fuer die JSON-Datenablage |
 
-## LoRa-Funk-Tracker (ESP32) + Master-Handy
+## Hardware: Logger mit Hotspot-Upload (Start-Variante)
+
+Guenstigste Variante: ESP32 + GPS + Akku pro Boot, kein LoRa. Das Geraet zeichnet jede Sekunde Position und
+GPS-Zeit auf und laedt das Log ueber den Hotspot des Master-Handys hoch, sobald es in Reichweite ist. Anleitung:
+[`firmware/README.md`](firmware/README.md). LoRa fuer die Live-Karte kann spaeter nachgeruestet werden.
+
+## LoRa-Funk-Tracker (ESP32) + Master-Handy (optional, spaeter)
 
 Fuer ~20 Boote ohne Handy im Boot: Funk-Tracker (ESP32 + GPS + LoRa) senden an einen Master-ESP32 in deinem Boot,
 dein Android-Handy holt die Daten per Bluetooth (`/gateway.html`) und leitet sie an den Server weiter. Firmware,

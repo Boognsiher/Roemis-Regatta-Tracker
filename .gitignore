@@ -6,3 +6,4 @@ data/*.json
 .DS_Store
 data/history/
 .pio/
+firmware/include/secrets.h

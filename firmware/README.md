@@ -1,11 +1,53 @@
-# Firmware: Funk-Tracker (LoRa) + Master
+# Firmware
+
+Zwei Ausbaustufen, **dieselbe Hardware-Basis (ESP32-S3 + GPS + Akku)**:
+
+1. **Logger (Start-Variante, ~12-15 EUR pro Boot, ohne LoRa):** zeichnet jede Sekunde Position + GPS-Zeit
+   im Flash auf und laedt das Log automatisch ueber den **Hotspot deines Handys** auf den Server, sobald das Boot
+   in Reichweite ist (Start-/Zielbereich). Reicht fuer die offizielle Zeitmessung. Keine Live-Karte waehrend der Fahrt.
+2. **LoRa-Live (spaeter, optional):** LoRa-Modul + Antenne nachruesten, dann sehen Zuschauer die Boote live
+   (siehe weiter unten). Das Log im Flash bleibt als Backup.
+
+## Logger (Start-Variante)
+
+Hardware pro Boot: ESP32-S3 (z.B. dein vorhandenes DevKit), GPS-Modul (ATGM336H/NEO-6M, 9600 Baud), LiPo +
+Lademodul (TP4056). Verdrahtung: GPS-TX -> `GPS_RX_PIN`, GPS-RX -> `GPS_TX_PIN` (Pins in `include/config.h`),
+3.3 V, GND. PPS wird hier nicht gebraucht: die Zeit kommt direkt aus dem GPS-Datensatz.
+
+**Tipp fuer spaeteres LoRa:** Lass die SPI-Pins (`LORA_*` in config.h) am ESP32 frei, oder nimm gleich ein
+Heltec WiFi LoRa 32 V3 (hat den LoRa-Chip schon an Bord, dann fehlt spaeter nur die Antenne + Firmware `tracker`).
+
+Einrichten (pro Geraet):
+1. Im Admin-Bereich den Tracker anlegen, beim Tracker **"Firmware-Config kopieren"** klicken.
+2. `include/secrets.h.example` nach `include/secrets.h` kopieren, die kopierten Zeilen (SERVER_URL, TRACKER_ID,
+   SERVER_ID, TRACKER_TOKEN) einsetzen, Hotspot-Name/-Passwort eintragen, und fuer HTTPS das Root-Zertifikat
+   (`SERVER_CA_PEM`) einfuegen (z.B. Let's Encrypt: `curl -O https://letsencrypt.org/certs/isrgrootx1.pem`).
+3. `pio run -e logger -t upload`
+
+Am Regattatag:
+1. Geraete im Boot einschalten (warten bis GPS-Fix, Seriell `s` zeigt Satelliten). Aufzeichnung startet selbst.
+2. Dein Handy: **Hotspot an** (2.4 GHz, gleicher Name/Passwort wie in `secrets.h`, mobile Daten an).
+   Jedes Geraet prueft alle 30 s, ob der Hotspot da ist, und laedt dann nur das noch nicht Hochgeladene.
+   Bereits uebertragene Daten gehen nicht doppelt hoch (Offset im Flash), und der Server entfernt Duplikate ohnehin.
+3. Wettfahrt wie gewohnt in `/regatta.html` starten; nach dem Zieleinlauf kommen die Logs der Boote beim Hotspot
+   an und das Ergebnis erscheint. Hotspot-Reichweite auf dem Wasser ca. 30-50 m.
+4. Notfall/Backup: Geraet per USB, `d` im seriellen Monitor -> CSV, dann `scripts/upload-log.js`.
+
+Grenzen: maximal etwa 8-10 gleichzeitig verbundene Geraete pro Android-Hotspot (fuer 5 Boote unkritisch).
+Der Flash reicht fuer etwa 20 Stunden Aufzeichnung (ca. 75 KB pro Stunde). Befehle seriell: `d` Log ausgeben,
+`e` Log loeschen (nach der Regatta empfohlen), `s` Status, `u` Upload sofort versuchen.
+
+---
+
+# LoRa-Live (optional, spaeter)
+
 
 ```
 Tracker (GPS + LoRa, auf jedem Boot) --LoRa 869.525 MHz--> Master-ESP32 (bei dir im Boot)
    --Bluetooth (BLE)--> dein Android-Handy (/gateway.html) --Internet--> Server
 ```
 
-**Status:** Der Code ist geschrieben, aber noch **nicht auf echter Hardware getestet und nicht kompiliert**
+**Status (alle Firmware):** Der Code ist geschrieben, aber noch **nicht auf echter Hardware getestet und nicht kompiliert**
 (in der Entwicklungsumgebung war PlatformIO nicht installierbar). Erwartet Anpassungen bei Pins/TCXO und evtl.
 Kleinigkeiten beim ersten Kompilieren. Das Funkpaket (`lora-packet.js`) und der Server-Teil sind getestet.
 

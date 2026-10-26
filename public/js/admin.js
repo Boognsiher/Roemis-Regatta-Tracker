@@ -66,6 +66,7 @@
           <div class="mono" style="word-break:break-all">${trackerUrl(t)}</div>
         </div>
         <button class="secondary copy-btn">Link kopieren</button>
+        <button class="secondary fw-btn">Firmware-Config kopieren</button>
         <button class="secondary reset-btn">Spur loeschen</button>
         <button class="danger delete-btn">Loeschen</button>
       </div>
@@ -78,6 +79,18 @@
         navigator.clipboard.writeText(trackerUrl(t)).then(() => {
           btn.textContent = 'Kopiert!';
           setTimeout(() => (btn.textContent = 'Link kopieren'), 1500);
+        });
+      });
+    });
+
+    els.list.querySelectorAll('.fw-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const t = trackers.find((x) => x.id === btn.closest('.tracker-row').dataset.id);
+        const text = `#define SERVER_URL     "${location.origin}"\n#define TRACKER_ID     ${t.loraId ?? 1}\n` +
+          `#define SERVER_ID      "${t.id}"\n#define TRACKER_TOKEN  "${t.token}"\n`;
+        navigator.clipboard.writeText(text).then(() => {
+          btn.textContent = 'Kopiert!';
+          setTimeout(() => (btn.textContent = 'Firmware-Config kopieren'), 1500);
         });
       });
     });
