@@ -44,6 +44,11 @@
   #define BAT_ADC_PIN 1
   #define BAT_CTRL_PIN 37        // Heltec V3: LOW = Spannungsteiler aktiv
   #define BAT_DIVIDER 4.9f
+  #define OLED_SDA 17            // onboard-OLED
+  #define OLED_SCL 18
+  #define OLED_RST 21
+  #define OLED_VEXT_PIN 36
+  #define BUTTON_PIN 0           // PRG-Taste
 #elif defined(BOARD_TBEAM_V12)
   // LilyGO T-Beam V1.2 (ESP32 + SX1262 + GPS, Strom-Chip AXP2101). Pins nach Meshtastic/LilyGO-Belegung -
   // vor dem ersten Einsatz mit dem Schaltplan deiner Revision vergleichen!
@@ -64,6 +69,10 @@
   #define BAT_ADC_PIN -1         // Akkustand kommt vom Strom-Chip (board.h)
   #define BAT_CTRL_PIN -1
   #define BAT_DIVIDER 1.0f
+  #define OLED_SDA 21            // 0.96"-OLED SSD1306 (I2C 0x3C) am Display-Anschluss
+  #define OLED_SCL 22
+  #define OLED_RST U8X8_PIN_NONE
+  #define BUTTON_PIN 38          // User-Taste
 #else
   // Allgemeiner ESP32-S3-DevKit + SX1262-Modul (z.B. Waveshare Core1262 / EByte E22-900M22S). ANPASSEN!
   #define LORA_SCK   12
@@ -81,6 +90,15 @@
   #define BAT_ADC_PIN -1         // -1 = Akkuanzeige aus (255 = unbekannt)
   #define BAT_CTRL_PIN -1
   #define BAT_DIVIDER 2.0f
+  #define OLED_SDA 4             // optionales OLED - ANPASSEN
+  #define OLED_SCL 5
+  #define OLED_RST U8X8_PIN_NONE
+  #define BUTTON_PIN -1          // -1 = keine Taste, Display bleibt dann immer an
+#endif
+
+// Display schaltet sich nach dieser Zeit aus (0 = immer an). Mit Taste wieder aktivieren.
+#ifndef OLED_TIMEOUT_MS
+#define OLED_TIMEOUT_MS 60000
 #endif
 
 #define GPS_BAUD 9600

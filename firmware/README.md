@@ -14,7 +14,7 @@ Hardware pro Boot: ESP32-S3 (z.B. dein vorhandenes DevKit), GPS-Modul (ATGM336H/
 Lademodul (TP4056). Verdrahtung: GPS-TX -> `GPS_RX_PIN`, GPS-RX -> `GPS_TX_PIN` (Pins in `include/config.h`),
 3.3 V, GND. PPS wird hier nicht gebraucht: die Zeit kommt direkt aus dem GPS-Datensatz.
 
-**Tipp fuer spaeteres LoRa:** Lass die SPI-Pins (`LORA_*` in config.h) am ESP32 frei, oder nimm gleich ein
+**Tipp fuer spaeteres LoRa (Firmware `tracker` kann dann beides: Live-Funk + Hotspot-Upload):** Lass die SPI-Pins (`LORA_*` in config.h) am ESP32 frei, oder nimm gleich ein
 Heltec WiFi LoRa 32 V3 (hat den LoRa-Chip schon an Bord, dann fehlt spaeter nur die Antenne + Firmware `tracker`).
 
 Einrichten (pro Geraet):
@@ -63,12 +63,26 @@ Wichtig:
 Ja, das geht ohne Umbau: fuer 5 Boote **5 x `tracker_tbeam`** (TRACKER_ID = LoRa-Nr aus dem Admin, 1..5) plus
 **1 x `master_tbeam`** bei dir im Boot, dann Gateway-Seite am Android-Handy (siehe unten "Ablauf am Regattatag").
 Beachte:
-- LoRa hat keine Quittung, einzelne Pakete koennen fehlen. Jeder LoRa-Tracker schreibt darum zusaetzlich das Flash-Log;
-  Luecken schliesst du nach der Regatta per USB (`d` im seriellen Monitor, dann `scripts/upload-log.js`).
-  Das Hotspot-Upload gibt es bisher nur im `logger`-Programm.
-- Die Zeitmessung nutzt die GPS-Zeit aus den Paketen. Bei Paketverlust um den Zieldurchgang zeigt das Ergebnis
-  `±` und eine Warnung; mit dem Flash-Log kannst du das nachtraeglich exakt machen.
+- LoRa hat keine Quittung, einzelne Pakete koennen fehlen. Darum schreibt jeder LoRa-Tracker zusaetzlich das
+  Flash-Log und **laedt es wie der Logger ueber den Hotspot hoch** (gleiche `secrets.h`, gleicher Ablauf). So hat
+  der Server nach dem Zieleinlauf die lueckenlosen Daten, die Live-Karte kommt on top per LoRa. Notfall: per USB
+  (`d` im seriellen Monitor, dann `scripts/upload-log.js`).
+- Die Zeitmessung nutzt die GPS-Zeit. Live aus LoRa-Paketen kann um den Zieldurchgang ein Paket fehlen
+  (Ergebnis zeigt `±` und Warnung); sobald das Hotspot-Upload das lueckenlose Log liefert, wird die Zeit exakt.
 - Empfehlung fuer den ersten Test: zuerst `logger_tbeam` (Hotspot) auf einem Board pruefen, dann LoRa mit zwei Boards.
+
+## Display (optional, SSD1306 OLED 128x64)
+
+Funktioniert in allen drei Programmen (Logger, Tracker, Master). Ohne Display kostet es nichts.
+1. **Hardware:** 0.96" I2C-OLED (SSD1306, Adresse 0x3C), 4 Pins VCC/GND/SDA/SCL. Am T-Beam V1.2 an den
+   Display-Anschluss (SDA = GPIO21, SCL = GPIO22, gleicher Bus wie der Strom-Chip). Der Heltec V3 hat ein OLED onboard.
+2. **Aktivieren:** in `platformio.ini` bei der Umgebung `; -DUSE_OLED` zu `-DUSE_OLED` machen (Semikolon weg).
+3. **Anzeige:** Logger/Tracker: ID + UTC-Zeit, GPS-Fix + Satelliten, Speed + Akku, Log-Eintraege, Upload-Stand
+   (`Up hochgeladen/gesamt` + Status wie "kein Hotspot"/"Upload..."), beim Tracker zusaetzlich LoRa-Sendezaehler.
+   Master: RX-Zaehler, letzter Tracker mit RSSI, BLE-Status, Puffer.
+4. **Strom sparen:** Das Display schaltet sich nach 60 s aus (`OLED_TIMEOUT_MS` in `config.h`, 0 = immer an) und geht
+   mit der Taste am Board (T-Beam: GPIO38, Heltec: PRG) wieder an. Ohne Taste (`BUTTON_PIN -1`) bleibt es dauerhaft an.
+5. Beim Eigenbau die Pins `OLED_SDA/OLED_SCL` und `BUTTON_PIN` im Abschnitt "Allgemeiner ESP32-S3" anpassen.
 
 ---
 

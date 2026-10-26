@@ -11,6 +11,7 @@
 #include "config.h"
 #include "protocol.h"
 #include "board.h"
+#include "display.h"
 
 SX1262 radio = new Module(LORA_NSS, LORA_DIO1, LORA_RST, LORA_BUSY);
 
@@ -39,13 +40,15 @@ class ServerCb : public NimBLEServerCallbacks {
   }
 };
 
-uint32_t rxOk = 0, rxBad = 0, lastStatus = 0, lastNotify = 0;
+uint32_t rxOk = 0, rxBad = 0, lastStatus = 0, lastNotify = 0, lastDisplay = 0;
+int lastId = 0, lastRssi = 0;
 
 void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("Regatta-Master");
   boardInit(true);
+  displayInit();
 
   SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_NSS);
   int st = radio.begin(LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SF, LORA_CR, LORA_SYNC_WORD, LORA_TX_POWER_DBM,
@@ -85,6 +88,8 @@ void loop() {
       m.snr4 = (int8_t)lround(radio.getSNR() * 4);
       ringPush(m);
       rxOk++;
+      lastId = m.pkt.id;
+      lastRssi = m.rssi;
     } else {
       rxBad++;
     }
@@ -97,6 +102,19 @@ void loop() {
     notifyChar->setValue((uint8_t *)&ring[ringTail], sizeof(MasterNotify));
     notifyChar->notify();
     ringTail = (ringTail + 1) % RING_SIZE;
+  }
+
+  if (millis() - lastDisplay > 1000) {
+    lastDisplay = millis();
+    char l[5][24];
+    float b = boardBattery();
+    snprintf(l[0], sizeof(l[0]), "MASTER  Akku %s%d%%", b < 0 ? "?" : "", b < 0 ? 0 : (int)lround(b * 100));
+    snprintf(l[1], sizeof(l[1]), "RX ok %u  defekt %u", (unsigned)rxOk, (unsigned)rxBad);
+    snprintf(l[2], sizeof(l[2]), "Letzter: #%d %d dBm", lastId, lastRssi);
+    snprintf(l[3], sizeof(l[3]), "BLE %s", bleConnected ? "verbunden" : "getrennt");
+    snprintf(l[4], sizeof(l[4]), "Puffer %u", (unsigned)((ringHead + RING_SIZE - ringTail) % RING_SIZE));
+    const char *lines[5] = {l[0], l[1], l[2], l[3], l[4]};
+    displayShow(lines, 5);
   }
 
   if (millis() - lastStatus > 10000) {

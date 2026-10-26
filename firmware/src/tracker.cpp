@@ -1,25 +1,34 @@
 /*
- * Regatta-Tracker (Funk-Tracker fuer jedes Boot)
- *  - liest GPS (NMEA, optional PPS) und sendet die Position im eigenen Zeitfenster per LoRa
- *  - schreibt jede Position (1x/s) zusaetzlich ins Flash (Backup fuer die offizielle Auswertung)
- *  - Serielle Befehle (115200): 'd' = Log als CSV ausgeben, 'e' = Log loeschen, 's' = Status
+ * Regatta-Tracker (LoRa-Funk-Tracker fuer jedes Boot)
+ *  - liest GPS (NMEA, optional PPS) und sendet die Position im eigenen Zeitfenster per LoRa (Live-Karte)
+ *  - schreibt jede Position (1x/s) zusaetzlich ins Flash und laedt das Log ueber den Hotspot deines Handys
+ *    auf den Server hoch, sobald das Boot in Reichweite ist (logupload.h) - das ist die lueckenlose
+ *    Grundlage fuer die offizielle Zeitmessung
+ *  - Serielle Befehle (115200): 'd' Log als CSV, 'e' Log loeschen, 's' Status, 'u' Upload sofort versuchen
  */
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#error "include/secrets.h fehlt: include/secrets.h.example kopieren und ausfuellen"
+#endif
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <RadioLib.h>
 #include <TinyGPSPlus.h>
-#include <LittleFS.h>
 #include "config.h"
 #include "protocol.h"
 #include "board.h"
+#include "logupload.h"
+#include "display.h"
 
 SX1262 radio = new Module(LORA_NSS, LORA_DIO1, LORA_RST, LORA_BUSY);
 TinyGPSPlus gps;
 HardwareSerial GPSSerial(1);
 
-// ---- Zeitbasis: GPS-Zeit mit Millisekunden-Aufloesung ----
+// ---- Zeitbasis: GPS-Zeit mit Millisekunden-Aufloesung (fuer die Sendefenster) ----
 // Mit PPS ist der Anker exakt (Sekundenimpuls); ohne PPS wird die Ankunftszeit des NMEA-Satzes minus
-// NMEA_LATENCY_US genutzt (Genauigkeit nur ca. +-200 ms - fuer die Zeitfenster ok, Positionszeit
+// NMEA_LATENCY_US genutzt (Genauigkeit nur ca. +-200 ms - fuer die Zeitfenster ok, die Positionszeit
 // kommt immer aus dem GPS-Satz selbst).
 #define NMEA_LATENCY_US 150000
 volatile uint32_t ppsMicros = 0;
@@ -67,54 +76,35 @@ void fillPacket(TrackerPacket &p, const Fix &f) {
   p.hdop10 = f.hdop < 0 ? 255 : (uint8_t)constrain((long)lround(f.hdop * 10), 0L, 254L);
 }
 
-// ---- Flash-Log ----
-File logFile;
-uint32_t lastLogFlush = 0;
-uint64_t lastLoggedTs = 0;
-bool fsOk = false;
-
-void logFix(const Fix &f) {
-  if (!fsOk || f.tsMs == lastLoggedTs) return;
-  lastLoggedTs = f.tsMs;
-  TrackerPacket p;
-  fillPacket(p, f);
-  logFile.write((const uint8_t *)&p, sizeof(p));
-  if (millis() - lastLogFlush > 5000) { logFile.flush(); lastLogFlush = millis(); }
-}
-
-void dumpLog() {
-  if (logFile) logFile.flush();
-  File r = LittleFS.open("/log.bin", "r");
-  if (!r) { Serial.println("kein Log"); return; }
-  Serial.println("ts_ms,lat,lon,speed_ms,heading_deg");
-  TrackerPacket p;
-  while (r.read((uint8_t *)&p, sizeof(p)) == sizeof(p)) {
-    if (p.magic != PKT_MAGIC) continue;
-    uint64_t ts = (uint64_t)p.epochSec * 1000 + p.centisec * 10;
-    Serial.printf("%llu,%.6f,%.6f,%.2f,%s\n", ts, p.lat / 1e6, p.lon / 1e6, p.speedCms / 100.0,
-                  p.headingDeg10 == 0xFFFF ? "" : String(p.headingDeg10 / 10.0, 1).c_str());
-  }
-  r.close();
-}
-
 uint32_t txCount = 0;
+bool loraOk = false;
 uint64_t lastTxCycle = UINT64_MAX;
+uint64_t lastLoggedTs = 0;
+uint32_t lastDisplay = 0;
 
 void handleSerial() {
   while (Serial.available()) {
     char c = Serial.read();
-    if (c == 'd') dumpLog();
-    else if (c == 'e') {
-      if (logFile) logFile.close();
-      LittleFS.remove("/log.bin");
-      logFile = LittleFS.open("/log.bin", "a");
-      Serial.println("Log geloescht");
-    } else if (c == 's') {
-      Serial.printf("ID %d | Sat %d | Fix %s | gesendet %u | Log %u Byte\n", TRACKER_ID,
-                    gps.satellites.isValid() ? (int)gps.satellites.value() : -1,
-                    lastFix.valid ? "ja" : "nein", txCount, logFile ? (unsigned)logFile.size() : 0);
+    if (logupHandleChar(c)) continue;
+    if (c == 's') {
+      Serial.printf("ID %d | Sat %d | Fix %s | gesendet %u | Log %u | hochgeladen %u | %s\n", TRACKER_ID,
+                    gps.satellites.isValid() ? (int)gps.satellites.value() : -1, lastFix.valid ? "ja" : "nein",
+                    txCount, (unsigned)logupEntries(), (unsigned)logupUploaded(), upStateText());
     }
   }
+}
+
+void updateDisplay() {
+  char l[6][24];
+  float b = boardBattery();
+  snprintf(l[0], sizeof(l[0]), "TRACKER #%d %02d:%02d:%02d", TRACKER_ID, gps.time.hour(), gps.time.minute(), gps.time.second());
+  snprintf(l[1], sizeof(l[1]), "GPS %s  Sat %d", lastFix.valid ? "OK" : "suche", gps.satellites.isValid() ? (int)gps.satellites.value() : 0);
+  snprintf(l[2], sizeof(l[2]), "%.1f kn  Akku %s%d%%", gps.speed.knots(), b < 0 ? "?" : "", b < 0 ? 0 : (int)lround(b * 100));
+  snprintf(l[3], sizeof(l[3]), "LoRa TX %u", (unsigned)txCount);
+  snprintf(l[4], sizeof(l[4]), "Log %u Up %u", (unsigned)logupEntries(), (unsigned)logupUploaded());
+  snprintf(l[5], sizeof(l[5]), "%s", upStateText());
+  const char *lines[6] = {l[0], l[1], l[2], l[3], l[4], l[5]};
+  displayShow(lines, 6);
 }
 
 void setup() {
@@ -122,10 +112,10 @@ void setup() {
   delay(500);
   Serial.printf("Regatta-Tracker, ID %d\n", TRACKER_ID);
   boardInit(true);
+  displayInit();
+  logupInit();
 
-  fsOk = LittleFS.begin(true);
-  if (fsOk) logFile = LittleFS.open("/log.bin", "a");
-
+  GPSSerial.setRxBufferSize(2048);
   GPSSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   if (GPS_PPS_PIN >= 0) attachInterrupt(digitalPinToInterrupt(GPS_PPS_PIN), onPps, RISING);
 
@@ -133,12 +123,14 @@ void setup() {
   int st = radio.begin(LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SF, LORA_CR, LORA_SYNC_WORD, LORA_TX_POWER_DBM,
                        LORA_PREAMBLE, LORA_TCXO_V);
   if (st != RADIOLIB_ERR_NONE) {
-    Serial.printf("LoRa-Init fehlgeschlagen: %d (Pins/TCXO in config.h pruefen)\n", st);
-    for (;;) delay(1000);
+    // Aufzeichnung ins Flash laeuft trotzdem weiter (Logger-Betrieb), nur ohne Live-Funk.
+    Serial.printf("LoRa-Init fehlgeschlagen: %d (Pins/TCXO in config.h pruefen) - nur Logger-Betrieb\n", st);
+  } else {
+    radio.setCRC(true);
+    if (LORA_DIO2_RF_SWITCH) radio.setDio2AsRfSwitch(true);
+    loraOk = true;
+    Serial.println("LoRa bereit");
   }
-  radio.setCRC(true);
-  if (LORA_DIO2_RF_SWITCH) radio.setDio2AsRfSwitch(true);
-  Serial.println("LoRa bereit");
 }
 
 void loop() {
@@ -168,13 +160,19 @@ void loop() {
       lastFix.speedMs = gps.speed.isValid() ? gps.speed.mps() : 0;
       lastFix.course = gps.course.isValid() ? gps.course.deg() : -1;
       lastFix.hdop = gps.hdop.isValid() ? gps.hdop.hdop() : -1;
-      logFix(lastFix);
+
+      if (epochMs != lastLoggedTs) {
+        lastLoggedTs = epochMs;
+        TrackerPacket p;
+        fillPacket(p, lastFix);
+        logupAdd(p);
+      }
     }
   }
 
   // Sendefenster: (TRACKER_ID-1)*SLOT_MS innerhalb des Zyklus, Start in der ersten Haelfte des Fensters.
   uint64_t now = gpsNowMs();
-  if (now && lastFix.valid) {
+  if (loraOk && now && lastFix.valid) {
     uint64_t cycle = now / CYCLE_MS;
     uint32_t inCycle = now % CYCLE_MS;
     uint32_t slotStart = (uint32_t)((TRACKER_ID - 1) * SLOT_MS) % CYCLE_MS;
@@ -190,5 +188,6 @@ void loop() {
     }
   }
 
+  if (millis() - lastDisplay > 1000) { lastDisplay = millis(); updateDisplay(); }
   handleSerial();
 }
