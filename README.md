@@ -129,6 +129,44 @@ Hinweise zum Tunnel:
   Services GTS Root R1), oder vorab mit `openssl s_client -connect <domain>:443 -showcerts` pruefen, welche Kette aktuell ist.
 - Ohne eigene Domain gibt es nur temporaere Quick-Tunnel-Adressen (aendern sich) - fuer Geraete ungeeignet.
 
+### Synology-Anleitung (DSM 7.2+, ohne eigene Domain: `*.synology.me`)
+
+Voraussetzung: Dein Internetanschluss hat eine **oeffentliche IPv4-Adresse** (Test: WAN-IP im Router = die IP, die
+eine "Wie ist meine IP"-Seite anzeigt, und nicht im Bereich 100.64.x.x - sonst CGNAT, dann Cloudflare Tunnel s.o.).
+
+**1. App starten**
+1. Paketzentrum -> **Container Manager** installieren.
+2. Repo als ZIP laden, mit File Station nach z.B. `/docker/regatta-tracker` kopieren (Ordner enthaelt `docker-compose.yml`).
+3. In diesem Ordner eine Datei `.env` anlegen (Vorlage `.env.example`), mindestens `ADMIN_TOKEN=<langer Zufallswert>`
+   und `GATEWAY_TOKEN=<langer Zufallswert>`.
+4. Container Manager -> **Projekt** -> Erstellen -> Pfad dieses Ordners waehlen -> Bauen/Starten.
+   Test im LAN: `http://<nas-ip>:3000`.
+
+**2. Adresse + Zertifikat**
+1. Systemsteuerung -> Externer Zugriff -> **DDNS** -> Hinzufuegen: Anbieter *Synology*, Hostname z.B. `meine-regatta`
+   (ergibt `meine-regatta.synology.me`).
+2. Router: **Port 443** (und fuer die Zertifikatsausstellung kurz **Port 80**) auf die NAS-IP weiterleiten.
+   Den DSM-Port 5001 **nicht** weiterleiten.
+3. Systemsteuerung -> Sicherheit -> **Zertifikat** -> Hinzufuegen -> *Zertifikat von Let's Encrypt holen* fuer den Hostnamen.
+
+**3. Reverse Proxy**
+1. Systemsteuerung -> Anmeldeportal -> Erweitert -> **Reverse-Proxy** -> Erstellen.
+2. Quelle: Protokoll HTTPS, Hostname `meine-regatta.synology.me`, Port 443. Ziel: HTTP, `localhost`, Port 3000.
+3. Reiter *Benutzerdefinierte Kopfzeile* -> Erstellen -> **WebSocket** (ohne das bleibt die Live-Karte leer).
+4. Systemsteuerung -> Sicherheit -> Zertifikat -> Einstellungen: dem Reverse-Proxy-Eintrag das Let's-Encrypt-Zertifikat zuweisen.
+5. Test von aussen (Handy mit Mobilfunk, nicht im WLAN): `https://meine-regatta.synology.me`.
+
+**4. Geraete eintragen**
+- In `firmware/include/secrets.h`: `SERVER_URL "https://meine-regatta.synology.me"` und als `SERVER_CA_PEM`
+  das Root-Zertifikat **ISRG Root X1** (`curl -O https://letsencrypt.org/certs/isrgrootx1.pem`).
+- Handy-Gateway: `https://meine-regatta.synology.me/gateway.html`, Tracker-/Admin-Seiten genauso.
+
+**5. Betrieb**
+- `data/` in Hyper Backup aufnehmen. Update: neuen Code in den Ordner kopieren, im Container Manager das Projekt neu bauen.
+- DSM: Zwei-Faktor-Anmeldung aktivieren, Auto-Block einschalten, automatische DSM-Updates aktiv lassen - das NAS ist jetzt
+  (nur ueber den Reverse-Proxy) aus dem Internet erreichbar.
+- Die Regatta-App hat bewusst keine Benutzerverwaltung: Admin ist per `ADMIN_TOKEN` geschuetzt, die Live-Karte ist oeffentlich.
+
 ## Konfiguration (Umgebungsvariablen)
 
 | Variable | Standard | Beschreibung |
