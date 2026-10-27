@@ -4,7 +4,7 @@ services:
     container_name: regatta-tracker
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${HOST_PORT:-3000}:3000"
     environment:
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Bitte ADMIN_TOKEN in einer .env Datei setzen}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-}
