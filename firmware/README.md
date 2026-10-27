@@ -84,6 +84,37 @@ Funktioniert in allen drei Programmen (Logger, Tracker, Master). Ohne Display ko
    mit der Taste am Board (T-Beam: GPIO38, Heltec: PRG) wieder an. Ohne Taste (`BUTTON_PIN -1`) bleibt es dauerhaft an.
 5. Beim Eigenbau die Pins `OLED_SDA/OLED_SCL` und `BUTTON_PIN` im Abschnitt "Allgemeiner ESP32-S3" anpassen.
 
+## Status-Ampel (optional, Modul mit 4 Pins: GND, Rot, Gelb, Gruen)
+
+Funktioniert in Logger, Tracker und Master. Anschluss: GND an GND, die drei Farb-Pins an freie GPIOs. Die Pins stehen in
+`include/config.h` (`LED_RED_PIN`, `LED_YELLOW_PIN`, `LED_GREEN_PIN`, `-1` = nicht vorhanden). **Die Standard-Pins sind
+Vorschlaege: vor dem Einbau am Board pruefen, dass sie frei und herausgefuehrt sind.** Das Modul hat eingebaute
+Widerstaende und laeuft direkt an 3.3 V. Hat dein Modul invertierte Logik, `-DLED_ACTIVE_LOW` in `build_flags` setzen.
+
+Beim Einschalten kommt eine **Lampenprobe** (Rot, Gelb, Gruen nacheinander): so siehst du, ob alles stimmt.
+
+**Im Betrieb (spart Strom, blinkt nur kurz):**
+
+| Anzeige | Bedeutung |
+|---|---|
+| Gruen: kurzes Blinken alle 2 s | GPS-Fix da, Aufzeichnung laeuft - alles in Ordnung |
+| Gelb: blinkt 1x pro Sekunde | Suche GPS **oder** Upload laeuft |
+| Rot: blinkt 1x pro Sekunde | Fehler: Flash/LoRa-Init fehlgeschlagen oder mehr als 5 min kein GPS |
+| Rot: sehr kurzes Blitzen jede Sekunde | Akku unter 15 % |
+
+**Master:** Gruen = Handy per Bluetooth verbunden, Gelb blinkt = wartet auf Handy, Rot = LoRa-Init fehlgeschlagen.
+
+**Taste** (am T-Beam: User-Taste GPIO38; am Heltec: PRG), nur Logger/Tracker:
+- **Kurz druecken:** 10 s Dauer-Anzeige (Gruen = alles hochgeladen, Gelb = Daten warten noch, Rot = Fehler/Akku) und
+  Upload sofort versuchen.
+- **5 s halten:** Log loeschen - nur wenn alles hochgeladen ist (Gruen leuchtet 3 s). Sonst Rot 3 s und es passiert nichts.
+- Eine Start-Taste braucht es nicht: Die Aufzeichnung laeuft automatisch, sobald das Geraet an ist und GPS-Fix hat.
+  Der Start der Wettfahrt wird von der Wettfahrtleitung im System gesetzt.
+
+"Alles hochgeladen" heisst: Der letzte Upload war erfolgreich und es fehlen hoechstens ca. 40 Eintraege (Sekunden).
+Die Entscheidungslogik ist auf dem Rechner testbar:
+`g++ -std=c++17 -I firmware/include firmware/test/test_ledlogic.cpp -o /tmp/t && /tmp/t`
+
 ---
 
 # LoRa-Live (optional, spaeter)

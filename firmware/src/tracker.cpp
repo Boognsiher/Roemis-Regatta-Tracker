@@ -21,6 +21,7 @@
 #include "board.h"
 #include "logupload.h"
 #include "display.h"
+#include "trackerled.h"
 
 SX1262 radio = new Module(LORA_NSS, LORA_DIO1, LORA_RST, LORA_BUSY);
 TinyGPSPlus gps;
@@ -113,6 +114,7 @@ void setup() {
   Serial.printf("Regatta-Tracker, ID %d\n", TRACKER_ID);
   boardInit(true);
   displayInit();
+  trackerLedInit();
   logupInit();
 
   GPSSerial.setRxBufferSize(2048);
@@ -188,6 +190,7 @@ void loop() {
     }
   }
 
+  trackerLedLoop(lastFix.valid && gps.location.isValid() && gps.location.age() < 3000, !loraOk);
   if (millis() - lastDisplay > 1000) { lastDisplay = millis(); updateDisplay(); }
   handleSerial();
 }

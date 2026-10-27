@@ -49,6 +49,9 @@
   #define OLED_RST 21
   #define OLED_VEXT_PIN 36
   #define BUTTON_PIN 0           // PRG-Taste
+  #define LED_RED_PIN 7          // Status-Ampel (4 Pins: GND, R, Y, G) - Pins vor dem Einbau pruefen
+  #define LED_YELLOW_PIN 2
+  #define LED_GREEN_PIN 3
 #elif defined(BOARD_TBEAM_V12)
   // LilyGO T-Beam V1.2 (ESP32 + SX1262 + GPS, Strom-Chip AXP2101). Pins nach Meshtastic/LilyGO-Belegung -
   // vor dem ersten Einsatz mit dem Schaltplan deiner Revision vergleichen!
@@ -73,6 +76,9 @@
   #define OLED_SCL 22
   #define OLED_RST U8X8_PIN_NONE
   #define BUTTON_PIN 38          // User-Taste
+  #define LED_RED_PIN 13         // Status-Ampel (4 Pins: GND, R, Y, G) - Pins vor dem Einbau am Board pruefen
+  #define LED_YELLOW_PIN 14
+  #define LED_GREEN_PIN 15
 #else
   // Allgemeiner ESP32-S3-DevKit + SX1262-Modul (z.B. Waveshare Core1262 / EByte E22-900M22S). ANPASSEN!
   #define LORA_SCK   12
@@ -94,6 +100,9 @@
   #define OLED_SCL 5
   #define OLED_RST U8X8_PIN_NONE
   #define BUTTON_PIN -1          // -1 = keine Taste, Display bleibt dann immer an
+  #define LED_RED_PIN 6          // Status-Ampel (4 Pins: GND, R, Y, G) - ANPASSEN, -1 = keine
+  #define LED_YELLOW_PIN 7
+  #define LED_GREEN_PIN 18
 #endif
 
 // Display schaltet sich nach dieser Zeit aus (0 = immer an). Mit Taste wieder aktivieren.

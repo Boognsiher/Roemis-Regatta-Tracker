@@ -12,6 +12,7 @@
 #include "protocol.h"
 #include "board.h"
 #include "display.h"
+#include "statusled.h"
 
 SX1262 radio = new Module(LORA_NSS, LORA_DIO1, LORA_RST, LORA_BUSY);
 
@@ -49,6 +50,7 @@ void setup() {
   Serial.println("Regatta-Master");
   boardInit(true);
   displayInit();
+  ledsInit();
 
   SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_NSS);
   int st = radio.begin(LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SF, LORA_CR, LORA_SYNC_WORD, LORA_TX_POWER_DBM,
@@ -102,6 +104,15 @@ void loop() {
     notifyChar->setValue((uint8_t *)&ring[ringTail], sizeof(MasterNotify));
     notifyChar->notify();
     ringTail = (ringTail + 1) % RING_SIZE;
+  }
+
+  {
+    // Ampel: gruen = Handy per Bluetooth verbunden, gelb blinkt = wartet auf Handy
+    static uint32_t lastBattMs = 0;
+    static float batt = -1;
+    if (millis() - lastBattMs > 2000) { lastBattMs = millis(); batt = boardBattery(); }
+    LedInputs in = {true, false, bleConnected, 0, batt, false};
+    ledRender(decidePattern(in));
   }
 
   if (millis() - lastDisplay > 1000) {

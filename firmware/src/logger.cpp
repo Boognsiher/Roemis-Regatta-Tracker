@@ -17,6 +17,7 @@
 #include "board.h"
 #include "logupload.h"
 #include "display.h"
+#include "trackerled.h"
 
 TinyGPSPlus gps;
 HardwareSerial GPSSerial(1);
@@ -64,6 +65,7 @@ void setup() {
   Serial.printf("Regatta-Logger, ID %d\n", TRACKER_ID);
   boardInit(false);
   displayInit();
+  trackerLedInit();
   logupInit();
 
   GPSSerial.setRxBufferSize(2048);
@@ -99,6 +101,7 @@ void loop() {
     }
   }
 
+  trackerLedLoop(gps.location.isValid() && gps.location.age() < 3000, false);
   if (millis() - lastDisplay > 1000) { lastDisplay = millis(); updateDisplay(); }
   handleSerial();
 }
