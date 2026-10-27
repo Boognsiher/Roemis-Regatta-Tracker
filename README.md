@@ -106,6 +106,29 @@ Fuer HTTPS: `navigator.geolocation` und Wake Lock funktionieren im mobilen Chrom
 zuverlaessig ueber **https://** (oder `http://localhost`). Ein Reverse Proxy mit Let's Encrypt
 (z.B. Caddy - macht das automatisch) wird daher fuer den echten Einsatz empfohlen.
 
+## Betrieb auf dem NAS (Docker) + Cloudflare Tunnel
+
+Die App laeuft als Docker-Container (Synology "Container Manager", QNAP "Container Station", Unraid/TrueNAS usw.).
+
+1. Repo auf das NAS holen (`git clone`) oder Ordner kopieren, `cp .env.example .env`, `ADMIN_TOKEN` (und
+   `GATEWAY_TOKEN`) auf lange Zufallswerte setzen.
+2. `docker compose up -d --build` - die App ist im LAN unter `http://<nas-ip>:3000` erreichbar.
+3. Daten liegen in `./data` (Tracker, Wettfahrten, volle Positions-Historie) - **diesen Ordner ins NAS-Backup aufnehmen**.
+4. Von aussen: HTTPS ist Pflicht (Handy-GPS, Web Bluetooth und der ESP32-Upload brauchen es). Am einfachsten per
+   Cloudflare Tunnel, ohne Portfreigabe und auch hinter CGNAT: Domain bei Cloudflare, Tunnel im Zero-Trust-Dashboard
+   anlegen, Ziel `http://regatta-tracker:3000`, Token als `CLOUDFLARE_TUNNEL_TOKEN` in `.env`, dann
+   `docker compose --profile tunnel up -d`.
+
+Hinweise zum Tunnel:
+- **Keine Cloudflare-Access-Login-Pflicht auf `/api/*`** legen: Handys und ESP32-Geraete koennen sich dort nicht einloggen.
+  Der Admin-Bereich ist ueber das `ADMIN_TOKEN` geschuetzt; zusaetzlicher Zugriffsschutz nur fuer `/admin.html` und
+  `/regatta.html` ist moeglich, aber der Gateway/Tracker brauchen `/api/*` offen.
+- WebSocket (Live-Karte) funktioniert durch den Tunnel.
+- **ESP32 und TLS-Zertifikat:** Cloudflare wechselt gelegentlich die Zertifizierungsstelle. In `secrets.h` bei
+  `SERVER_CA_PEM` darum mehrere Root-Zertifikate hintereinander einfuegen (z.B. ISRG Root X1 *und* Google Trust
+  Services GTS Root R1), oder vorab mit `openssl s_client -connect <domain>:443 -showcerts` pruefen, welche Kette aktuell ist.
+- Ohne eigene Domain gibt es nur temporaere Quick-Tunnel-Adressen (aendern sich) - fuer Geraete ungeeignet.
+
 ## Konfiguration (Umgebungsvariablen)
 
 | Variable | Standard | Beschreibung |

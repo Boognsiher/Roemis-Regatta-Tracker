@@ -13,3 +13,18 @@ services:
       MAX_TRAIL_POINTS: 1000
     volumes:
       - ./data:/app/data
+
+  # Optional: Cloudflare Tunnel (HTTPS von aussen ohne Portfreigabe). Starten mit:
+  #   docker compose --profile tunnel up -d
+  # Tunnel-Token im Cloudflare-Dashboard erzeugen (Zero Trust -> Networks -> Tunnels), in .env eintragen.
+  # Im Tunnel als Ziel "http://regatta-tracker:3000" eintragen.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: regatta-cloudflared
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - regatta-tracker
