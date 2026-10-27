@@ -119,6 +119,27 @@ Die App laeuft als Docker-Container (Synology "Container Manager", QNAP "Contain
    anlegen, Ziel `http://regatta-tracker:3000`, Token als `CLOUDFLARE_TUNNEL_TOKEN` in `.env`, dann
    `docker compose --profile tunnel up -d`.
 
+### Cloudflare-Tunnel einrichten (Beispiel: `regattazeit.ch`, App unter `live.regattazeit.ch`)
+
+1. **Domain zu Cloudflare:** Auf cloudflare.com kostenlosen Account anlegen -> *Add a domain* -> `regattazeit.ch` -> Tarif
+   *Free*. Cloudflare nennt zwei Nameserver. Diese beim Registrar der Domain eintragen (Nameserver ersetzen).
+   Ist beim Registrar **DNSSEC** aktiv, vorher abschalten (sonst ist die Domain nach der Umstellung nicht erreichbar).
+   Warten, bis Cloudflare "Active" anzeigt (Minuten bis wenige Stunden).
+2. **Tunnel anlegen:** Cloudflare-Dashboard -> *Zero Trust* -> *Networks* -> *Tunnels* -> *Create a tunnel* -> Typ
+   *Cloudflared* -> Name `regatta-nas` -> Umgebung *Docker* -> den **Token** aus dem angezeigten Befehl kopieren
+   (der lange Text nach `--token`).
+3. **Public Hostname** im Tunnel hinzufuegen: Subdomain `live`, Domain `regattazeit.ch`, Service Typ `HTTP`,
+   URL `regatta-tracker:3000` (Name des Containers im selben Compose-Projekt).
+4. In `.env` auf dem NAS: `CLOUDFLARE_TUNNEL_TOKEN=<Token>`, dann `docker compose --profile tunnel up -d`
+   (Synology Container Manager: Projekt neu bauen/starten; das Profil `tunnel` aktivieren bzw. den Service
+   `cloudflared` im Projekt starten).
+5. Test mit dem Handy ueber Mobilfunk: `https://live.regattazeit.ch`. Admin: `https://live.regattazeit.ch/admin.html`.
+6. Firmware: `SERVER_URL "https://live.regattazeit.ch"`. Root-Zertifikate fuer `SERVER_CA_PEM`: vorher mit
+   `openssl s_client -connect live.regattazeit.ch:443 -showcerts </dev/null` die aktuelle Kette ansehen und mehrere
+   Roots hintereinander einfuegen (mindestens ISRG Root X1, ISRG Root X2, GTS Root R1, GTS Root R4), weil Cloudflare
+   die Zertifizierungsstelle wechseln kann.
+7. Cloudflare -> *SSL/TLS* -> Modus *Full* belassen; *Always Use HTTPS* einschalten. **Keine** Access-Anmeldung auf `/api/*`.
+
 Hinweise zum Tunnel:
 - **Keine Cloudflare-Access-Login-Pflicht auf `/api/*`** legen: Handys und ESP32-Geraete koennen sich dort nicht einloggen.
   Der Admin-Bereich ist ueber das `ADMIN_TOKEN` geschuetzt; zusaetzlicher Zugriffsschutz nur fuer `/admin.html` und
