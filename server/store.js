@@ -13,6 +13,7 @@ const { nanoid, customAlphabet } = require('nanoid');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const TRACKERS_FILE = path.join(DATA_DIR, 'trackers.json');
 const POSITIONS_FILE = path.join(DATA_DIR, 'positions.json');
+const CONFIGS_FILE = path.join(DATA_DIR, 'configs.json');
 
 // Wie viele Punkte pro Tracker als "Spur" (Track auf der Karte) behalten werden.
 const MAX_TRAIL_POINTS = parseInt(process.env.MAX_TRAIL_POINTS || '1000', 10);
@@ -54,6 +55,8 @@ ensureDataDir();
 let trackers = loadJson(TRACKERS_FILE, {});
 /** @type {Record<string, {latest: object|null, trail: object[]}>} */
 let positions = loadJson(POSITIONS_FILE, {});
+/** Segeluhr-Konfiguration pro Tracker (frei strukturiertes JSON vom Handy). @type {Record<string, {updatedAt:number,data:object}>} */
+let configs = loadJson(CONFIGS_FILE, {});
 
 let saveTimer = null;
 function scheduleSave() {
@@ -62,6 +65,7 @@ function scheduleSave() {
     saveTimer = null;
     saveJsonAtomic(TRACKERS_FILE, trackers);
     saveJsonAtomic(POSITIONS_FILE, positions);
+    saveJsonAtomic(CONFIGS_FILE, configs);
   }, 1000);
 }
 
@@ -99,6 +103,7 @@ function deleteTracker(id) {
   const existed = !!trackers[id];
   delete trackers[id];
   delete positions[id];
+  delete configs[id];
   if (existed) scheduleSave();
   return existed;
 }
@@ -134,6 +139,17 @@ function recordPosition(id, pos) {
   }
   scheduleSave();
   return entry;
+}
+
+function getConfig(id) {
+  return configs[id] || null;
+}
+
+function setConfig(id, data) {
+  if (!trackers[id]) return null;
+  configs[id] = { updatedAt: Date.now(), data };
+  scheduleSave();
+  return configs[id];
 }
 
 function isStale(entry) {
@@ -177,5 +193,7 @@ module.exports = {
   getPublicTracker,
   listPublicTrackers,
   clearTrail,
+  getConfig,
+  setConfig,
   STALE_AFTER_MS
 };

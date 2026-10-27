@@ -98,6 +98,19 @@ Content-Type: application/json
 { "lat": 47.123, "lon": 8.456, "speed": 3.1, "heading": 210, "battery": 0.82 }
 ```
 
+### Segeluhr-App als Tracker + Konfigurations-Ablage
+
+Die Android-App "Segeluhr" kann ihre GPS-Position selbst an diese API senden (Setup-Tab ->
+"Regatta-Tracker", Tracker-Link aus dem Admin-Bereich einfuegen). Zusaetzlich legt der Server pro
+Tracker die Segeluhr-Konfiguration (Wegpunkte, Seegrenze, Boots-Profile) ab:
+
+```
+GET /api/trackers/<id>/config      Authorization: Bearer <token>   -> { updatedAt, data }
+PUT /api/trackers/<id>/config      Authorization: Bearer <token>   Body: beliebiges JSON-Objekt
+```
+
+Die Daten liegen in `data/configs.json`; das Admin-Token (`x-admin-token`) darf ebenfalls lesen.
+
 Guenstige Optionen fuer spaeter (grob nach Aufwand/Preis):
 
 1. **ESP32 + GPS-Modul (z.B. NEO-6M) + WLAN** (~10-15 EUR/Stueck): sendet per WLAN direkt an

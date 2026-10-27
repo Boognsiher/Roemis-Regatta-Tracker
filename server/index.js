@@ -18,7 +18,7 @@ if (!ADMIN_TOKEN) {
 }
 
 const app = express();
-app.use(express.json({ limit: '20kb' }));
+app.use(express.json({ limit: '200kb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ---------- Hilfsfunktionen ----------
@@ -70,6 +70,35 @@ app.post('/api/trackers/:id/position', (req, res) => {
 
   broadcast({ type: 'position', tracker: store.getPublicTracker(id) });
   res.json({ ok: true, entry });
+});
+
+// Segeluhr-Konfiguration (Wegpunkte, Boots-Profile, ...) pro Tracker ablegen/abrufen.
+// Auth wie bei /position per Bearer-Token; das Admin-Token darf zusaetzlich lesen.
+function authTracker(req, res) {
+  const { id } = req.params;
+  const auth = req.get('authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!store.getTracker(id)) { res.status(404).json({ error: 'Tracker unbekannt' }); return false; }
+  const isAdmin = ADMIN_TOKEN && (req.get('x-admin-token') || '') === ADMIN_TOKEN;
+  if (!isAdmin && !store.verifyToken(id, token)) { res.status(401).json({ error: 'Ungueltiges Token' }); return false; }
+  return true;
+}
+
+app.get('/api/trackers/:id/config', (req, res) => {
+  if (!authTracker(req, res)) return;
+  const cfg = store.getConfig(req.params.id);
+  if (!cfg) return res.status(404).json({ error: 'Noch keine Konfiguration gespeichert' });
+  res.json(cfg);
+});
+
+app.put('/api/trackers/:id/config', (req, res) => {
+  if (!authTracker(req, res)) return;
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Konfiguration muss ein JSON-Objekt sein' });
+  }
+  const cfg = store.setConfig(req.params.id, body);
+  res.json({ ok: true, updatedAt: cfg.updatedAt });
 });
 
 // Metadaten eines Trackers oeffentlich abrufbar (z.B. fuer die Tracker-Seite selbst: Name/Farbe anzeigen).
