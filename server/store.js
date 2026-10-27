@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { nanoid, customAlphabet } = require('nanoid');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -116,7 +117,10 @@ function deleteTracker(id) {
 
 function verifyToken(id, token) {
   const t = trackers[id];
-  return !!t && !!token && t.token === token;
+  if (!t || !token || typeof token !== 'string') return false;
+  const a = crypto.createHash('sha256').update(t.token).digest();
+  const b = crypto.createHash('sha256').update(token).digest();
+  return crypto.timingSafeEqual(a, b);
 }
 
 function renameTracker(id, name) {

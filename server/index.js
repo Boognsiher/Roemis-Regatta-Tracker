@@ -7,6 +7,8 @@ const { WebSocketServer } = require('ws');
 const QRCode = require('qrcode');
 const store = require('./store');
 const regatta = require('./regatta');
+const crypto = require('crypto');
+const { createAuthGuard } = require('./authguard');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
@@ -21,14 +23,37 @@ if (!ADMIN_TOKEN) {
 }
 
 const app = express();
+app.disable('x-powered-by');
+// Einfache Sicherheits-Header (keine Einbettung in fremde Seiten, kein Content-Sniffing, kein Referrer)
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'DENY');
+  res.set('Referrer-Policy', 'no-referrer');
+  next();
+});
 app.use(express.json({ limit: '500kb' }));
+
+// Sperre nach wiederholten Fehlversuchen (Admin-, Gateway- und Tracker-Token)
+const authGuard = createAuthGuard({
+  maxFailures: parseInt(process.env.AUTH_MAX_FAILURES || '8', 10),
+  blockMs: parseInt(process.env.AUTH_BLOCK_MINUTES || '15', 10) * 60 * 1000
+});
+app.use('/api/admin', authGuard.middleware);
+app.use('/api/gateway', authGuard.middleware);
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ---------- Hilfsfunktionen ----------
 
+function safeEqual(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+// Das Token wird nur noch im Header akzeptiert (nicht in der URL, sonst landet es in Logs/Verlauf).
 function requireAdmin(req, res, next) {
-  const supplied = req.get('x-admin-token') || req.query.adminToken || '';
-  if (!ADMIN_TOKEN || supplied !== ADMIN_TOKEN) {
+  const supplied = req.get('x-admin-token') || '';
+  if (!ADMIN_TOKEN || !safeEqual(supplied, ADMIN_TOKEN)) {
     return res.status(401).json({ error: 'Ungueltiges oder fehlendes Admin-Token' });
   }
   next();
@@ -37,7 +62,7 @@ function requireAdmin(req, res, next) {
 function requireGateway(req, res, next) {
   const admin = req.get('x-admin-token') || '';
   const gw = req.get('x-gateway-token') || '';
-  const ok = (ADMIN_TOKEN && admin === ADMIN_TOKEN) || (GATEWAY_TOKEN && gw === GATEWAY_TOKEN);
+  const ok = (ADMIN_TOKEN && safeEqual(admin, ADMIN_TOKEN)) || (GATEWAY_TOKEN && safeEqual(gw, GATEWAY_TOKEN));
   if (!ok) return res.status(401).json({ error: 'Ungueltiges Gateway-/Admin-Token' });
   next();
 }
@@ -56,7 +81,7 @@ app.get('/api/trackers', (req, res) => {
 // ---------- Tracker-API (vom Handy / DIY-Geraet aufgerufen) ----------
 
 // Position eines einzelnen Trackers melden. Auth per Bearer-Token (pro Tracker einzigartig).
-app.post('/api/trackers/:id/position', (req, res) => {
+app.post('/api/trackers/:id/position', authGuard.middleware, (req, res) => {
   const { id } = req.params;
   const auth = req.get('authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.body.token;
@@ -84,7 +109,7 @@ app.post('/api/trackers/:id/position', (req, res) => {
 });
 
 // Mehrere (ggf. nachgesendete) Positionen auf einmal - der Handy-Client puffert bei Funkloch.
-app.post('/api/trackers/:id/positions', (req, res) => {
+app.post('/api/trackers/:id/positions', authGuard.middleware, (req, res) => {
   const { id } = req.params;
   const auth = req.get('authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : req.body.token;
@@ -112,7 +137,7 @@ app.post('/api/trackers/:id/positions', (req, res) => {
 });
 
 // Bootsregistrierung durch den Skipper selbst (Segelnummer, Steuermann, Yardstick-Klasse).
-app.put('/api/trackers/:id/registration', (req, res) => {
+app.put('/api/trackers/:id/registration', authGuard.middleware, (req, res) => {
   const auth = req.get('authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!store.getTracker(req.params.id)) return res.status(404).json({ error: 'Tracker unbekannt' });
