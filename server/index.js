@@ -9,11 +9,15 @@ const store = require('./store');
 const regatta = require('./regatta');
 const crypto = require('crypto');
 const { createAuthGuard } = require('./authguard');
+const { createSessions } = require('./session');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 // Optional: eigenes Token nur fuer das Gateway-Handy (darf nur Positionen melden, nichts verwalten).
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN || '';
+// Optional: Zuschauer-Passwort. Gesetzt -> Live-Karte und Ergebnisse nur nach Login (/login.html); leer -> oeffentlich.
+const VIEWER_PASSWORD = process.env.VIEWER_PASSWORD || '';
+const sessions = createSessions({ adminToken: ADMIN_TOKEN, viewerPassword: VIEWER_PASSWORD, secret: process.env.SESSION_SECRET || '' });
 
 if (!ADMIN_TOKEN) {
   console.warn(
@@ -41,6 +45,16 @@ const authGuard = createAuthGuard({
 });
 app.use('/api/admin', authGuard.middleware);
 app.use('/api/gateway', authGuard.middleware);
+
+// Seiten fuer Zuschauer nur mit Anmeldung (sonst Weiterleitung zur Login-Seite). Verwaltung, Gateway- und Tracker-Seiten
+// sind nicht betroffen: dort schuetzen Tokens die Daten.
+const VIEWER_PAGES = new Set(['/', '/index.html', '/results.html']);
+app.use((req, res, next) => {
+  if (sessions.enabled && req.method === 'GET' && VIEWER_PAGES.has(req.path) && !sessions.fromRequest(req)) {
+    return res.redirect(`/login.html?next=${encodeURIComponent(req.path === '/' ? '/index.html' : req.path)}`);
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ---------- Hilfsfunktionen ----------
@@ -51,14 +65,51 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(ha, hb);
 }
 
+function isSecure(req) {
+  return req.secure || /https/i.test(req.get('x-forwarded-proto') || '') || /https/i.test(req.get('cf-visitor') || '');
+}
+
 // Das Token wird nur noch im Header akzeptiert (nicht in der URL, sonst landet es in Logs/Verlauf).
+// Alternativ gilt eine Admin-Anmeldung per Cookie (POST /api/login mit dem Admin-Token).
 function requireAdmin(req, res, next) {
   const supplied = req.get('x-admin-token') || '';
-  if (!ADMIN_TOKEN || !safeEqual(supplied, ADMIN_TOKEN)) {
-    return res.status(401).json({ error: 'Ungueltiges oder fehlendes Admin-Token' });
-  }
-  next();
+  if (ADMIN_TOKEN && supplied && safeEqual(supplied, ADMIN_TOKEN)) return next();
+  if (ADMIN_TOKEN && sessions.fromRequest(req) === 'admin') return next();
+  return res.status(401).json({ error: 'Ungueltiges oder fehlendes Admin-Token' });
 }
+
+// Lesezugriff auf Karte/Ergebnisse: ohne VIEWER_PASSWORD offen; sonst Anmeldung (Cookie) ODER Admin-/Gateway-Token
+// im Header ODER Token eines Trackers (fuer die Tracker-Seite im Handy).
+function requireViewer(req, res, next) {
+  if (!sessions.enabled) return next();
+  if (sessions.fromRequest(req)) return next();
+  const admin = req.get('x-admin-token') || '';
+  const gw = req.get('x-gateway-token') || '';
+  if (ADMIN_TOKEN && admin && safeEqual(admin, ADMIN_TOKEN)) return next();
+  if (GATEWAY_TOKEN && gw && safeEqual(gw, GATEWAY_TOKEN)) return next();
+  const auth = req.get('authorization') || '';
+  if (auth.startsWith('Bearer ') && store.findTrackerByToken(auth.slice(7))) return next();
+  return res.status(401).json({ error: 'Anmeldung erforderlich' });
+}
+
+// ---------- Anmeldung (Cookie) ----------
+
+// Zuschauer-Passwort oder Admin-Token -> Cookie. Falsche Eingaben zaehlen fuer die Sperre (authGuard).
+app.post('/api/login', authGuard.middleware, (req, res) => {
+  const role = sessions.checkPassword(req.body && req.body.password);
+  if (!role) return res.status(401).json({ error: 'Passwort falsch' });
+  res.set('Set-Cookie', sessions.cookieHeader(sessions.issue(role), isSecure(req)));
+  res.json({ ok: true, role });
+});
+
+app.post('/api/logout', (req, res) => {
+  res.set('Set-Cookie', sessions.clearCookieHeader(isSecure(req)));
+  res.json({ ok: true });
+});
+
+app.get('/api/session', (req, res) => {
+  res.json({ enabled: sessions.enabled, role: sessions.fromRequest(req) });
+});
 
 function requireGateway(req, res, next) {
   const admin = req.get('x-admin-token') || '';
@@ -75,7 +126,7 @@ function isFiniteNumber(n) {
 // ---------- Oeffentliche API (Dashboard) ----------
 
 // Alle Tracker inkl. letzter Position + Spur - fuer das Live-Dashboard.
-app.get('/api/trackers', (req, res) => {
+app.get('/api/trackers', requireViewer, (req, res) => {
   res.json({ trackers: store.listPublicTrackers(), staleAfterMs: store.STALE_AFTER_MS });
 });
 
@@ -147,9 +198,9 @@ app.put('/api/trackers/:id/registration', authGuard.middleware, (req, res) => {
 });
 
 // Oeffentlich: Klassen, Registrierungen, Linie, Wettfahrten.
-app.get('/api/regatta', (req, res) => res.json(regatta.publicState()));
-app.get('/api/races/:id/results', (req, res) => res.json(regatta.computeResults(regatta.getRace(req.params.id))));
-app.get('/api/races/:id/results.csv', (req, res) => {
+app.get('/api/regatta', requireViewer, (req, res) => res.json(regatta.publicState()));
+app.get('/api/races/:id/results', requireViewer, (req, res) => res.json(regatta.computeResults(regatta.getRace(req.params.id))));
+app.get('/api/races/:id/results.csv', requireViewer, (req, res) => {
   const race = regatta.getRace(req.params.id);
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', `attachment; filename="ergebnis-${race.name.replace(/[^\w-]+/g, '_')}.csv"`);
@@ -157,7 +208,7 @@ app.get('/api/races/:id/results.csv', (req, res) => {
 });
 
 // Metadaten eines Trackers oeffentlich abrufbar (z.B. fuer die Tracker-Seite selbst: Name/Farbe anzeigen).
-app.get('/api/trackers/:id', (req, res) => {
+app.get('/api/trackers/:id', requireViewer, (req, res) => {
   const t = store.getPublicTracker(req.params.id);
   if (!t) return res.status(404).json({ error: 'Tracker unbekannt' });
   res.json(t);
@@ -309,7 +360,15 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 // ---------- HTTP + WebSocket Server ----------
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  // Live-Verbindung nur mit gueltiger Anmeldung (Cookie wird vom Browser beim Verbinden mitgeschickt)
+  verifyClient: (info, done) => {
+    if (!sessions.enabled || sessions.fromRequest(info.req)) return done(true);
+    done(false, 401, 'Anmeldung erforderlich');
+  }
+});
 
 function broadcast(message) {
   const data = JSON.stringify(message);

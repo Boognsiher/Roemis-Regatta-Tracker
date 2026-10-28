@@ -39,6 +39,7 @@
       throw new Error('Token abgelehnt - bitte pruefen.');
     }
     localStorage.setItem(STORAGE_KEY, token);
+    fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: token }) }).catch(() => {});
     els.loginCard.style.display = 'none';
     els.mainCard.style.display = 'block';
     const data = await res.json();

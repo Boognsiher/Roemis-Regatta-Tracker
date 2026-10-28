@@ -5,6 +5,8 @@
   const $ = (id) => document.getElementById(id);
   if (!adminToken) { $('no-login').style.display = 'block'; return; }
   $('main').style.display = 'block';
+  // Zusaetzlich per Cookie anmelden, damit Downloads (CSV) ohne Header funktionieren
+  fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: adminToken }) }).catch(() => {});
 
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = ['DNS', 'DNF', 'DSQ', 'OCS', 'RET', 'DNC'];
@@ -258,7 +260,7 @@
     regatta = rg;
     results = {};
     await Promise.all(regatta.races.filter((r) => r.startTs != null).map(async (r) => {
-      results[r.id] = await (await fetch(`/api/races/${r.id}/results`)).json();
+      results[r.id] = await api(`/api/races/${r.id}/results`);
     }));
     renderClasses(); renderBoats(); renderRaces();
   }

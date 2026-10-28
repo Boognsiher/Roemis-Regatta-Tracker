@@ -8,6 +8,8 @@ services:
     environment:
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Bitte ADMIN_TOKEN in einer .env Datei setzen}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-}
+      VIEWER_PASSWORD: ${VIEWER_PASSWORD:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
       AUTH_MAX_FAILURES: ${AUTH_MAX_FAILURES:-8}
       AUTH_BLOCK_MINUTES: ${AUTH_BLOCK_MINUTES:-15}
       PORT: 3000

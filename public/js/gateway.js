@@ -151,7 +151,7 @@
 
   async function loadTrackers() {
     try {
-      trackers = (await (await fetch('/api/trackers')).json()).trackers;
+      trackers = (await (await fetch('/api/trackers', { headers: { 'x-gateway-token': $('token').value.trim(), 'x-admin-token': $('token').value.trim() } })).json()).trackers;
       $('own-tracker').innerHTML = trackers.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
     } catch { /* offline: spaeter erneut */ }
   }

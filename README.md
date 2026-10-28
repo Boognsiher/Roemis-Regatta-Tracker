@@ -239,6 +239,12 @@ App (Karte, Admin, Speicherung) bleibt unveraendert.
 
 ## Sicherheit
 
+- **Login fuer Zuschauer:** Ist `VIEWER_PASSWORD` gesetzt, sind Live-Karte (`/`), Ergebnisse und deren Daten
+  (`/api/trackers`, `/api/regatta`, `/api/races/...`, WebSocket) nur nach Anmeldung auf `/login.html` erreichbar. Das
+  Passwort gibst du an die Zuschauer weiter (z.B. als QR-Code am See). Die Anmeldung gilt 14 Tage (signiertes,
+  HttpOnly-Cookie ohne Passwort darin). Das Admin-Token meldet ebenfalls an (mit Admin-Rechten). Ohne `VIEWER_PASSWORD`
+  bleibt alles oeffentlich wie bisher. Die Geraete sind davon **nicht** betroffen: Tracker-Upload, Gateway und die
+  Tracker-Seite im Handy laufen weiter mit ihren eigenen Tokens. Falsche Passwoerter zaehlen fuer die Sperre unten.
 - **Sperre bei Fehlversuchen:** Nach 8 falschen Tokens (Admin, Gateway, Tracker) innerhalb von 15 Minuten wird die
   absendende IP 15 Minuten gesperrt (HTTP 429; hinter dem Cloudflare Tunnel zaehlt die echte Besucher-IP aus
   `CF-Connecting-IP`). Einstellbar mit `AUTH_MAX_FAILURES` und `AUTH_BLOCK_MINUTES`. Die oeffentliche Live-Karte ist

@@ -160,6 +160,16 @@ function readHistory(id) {
   return out;
 }
 
+/** Tracker zu einem Tracker-Token finden (null = Token gehoert keinem Tracker). Zeitkonstanter Vergleich. */
+function findTrackerByToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  let found = null;
+  for (const t of Object.values(trackers)) {
+    if (verifyToken(t.id, token)) found = t; // alle durchlaufen, damit die Laufzeit nicht verraet, wo ein Treffer liegt
+  }
+  return found;
+}
+
 function getTrackerByLoraId(n) {
   return Object.values(trackers).find((t) => t.loraId === n) || null;
 }
@@ -255,6 +265,7 @@ function clearTrail(id) {
 }
 
 module.exports = {
+  findTrackerByToken,
   decimate,
   staleMap,
   getTrackerByLoraId,

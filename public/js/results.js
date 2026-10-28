@@ -8,7 +8,9 @@
   };
 
   async function load() {
-    const reg = await (await fetch('/api/regatta')).json();
+    const regRes = await fetch('/api/regatta');
+    if (regRes.status === 401) { location.replace('/login.html?next=/results.html'); return; }
+    const reg = await regRes.json();
     const races = reg.races.filter((r) => r.startTs != null).reverse();
     const out = [];
     for (const r of races) {

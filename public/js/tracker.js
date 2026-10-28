@@ -48,7 +48,7 @@
   let wakeLock = null;
   let batteryLevel = null;
 
-  fetch(`/api/trackers/${id}`).then((r) => r.json()).then((t) => {
+  fetch(`/api/trackers/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).then((t) => {
     if (t && t.name) els.name.textContent = t.name;
   }).catch(() => {});
 
@@ -191,7 +191,7 @@
     btn: document.getElementById('reg-btn'),
     msg: document.getElementById('reg-msg')
   };
-  fetch('/api/regatta').then((r) => r.json()).then((data) => {
+  fetch('/api/regatta', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).then((data) => {
     reg.cls.innerHTML = '<option value="">Klasse waehlen...</option>' + data.classes
       .map((c) => `<option value="${c.id}">${c.name} (YS ${c.yardstick})</option>`).join('');
     const mine = data.boats[id];
