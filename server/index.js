@@ -24,11 +24,12 @@ if (!ADMIN_TOKEN) {
 
 const app = express();
 app.disable('x-powered-by');
-// Einfache Sicherheits-Header (keine Einbettung in fremde Seiten, kein Content-Sniffing, kein Referrer)
+// Einfache Sicherheits-Header (keine Einbettung in fremde Seiten, kein Content-Sniffing).
+// Referrer: nur die Herkunft (ohne Pfad) an fremde Server - die OSM-Kartenserver verlangen einen Referer und sperren sonst (403).
 app.use((req, res, next) => {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('X-Frame-Options', 'DENY');
-  res.set('Referrer-Policy', 'no-referrer');
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
 });
 app.use(express.json({ limit: '500kb' }));

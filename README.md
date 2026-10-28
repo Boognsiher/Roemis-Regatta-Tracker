@@ -244,7 +244,7 @@ App (Karte, Admin, Speicherung) bleibt unveraendert.
   `CF-Connecting-IP`). Einstellbar mit `AUTH_MAX_FAILURES` und `AUTH_BLOCK_MINUTES`. Die oeffentliche Live-Karte ist
   nie betroffen. Ein Neustart des Containers hebt Sperren auf.
 - Tokens werden nur noch im Header akzeptiert (nicht in der URL), Vergleich zeitkonstant; Antworten enthalten
-  Schutz-Header (`X-Frame-Options`, `nosniff`, `Referrer-Policy`).
+  Schutz-Header (`X-Frame-Options`, `nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`).
 - Das Admin-Token wird im Browser (localStorage) gespeichert: auf geteilten Rechnern nach Gebrauch abmelden bzw. den
   Browser-Speicher leeren.
 - Der Admin-Bereich ist nur ueber das `ADMIN_TOKEN` geschuetzt - unbedingt ein langes, zufaelliges
