@@ -92,6 +92,29 @@ Funktioniert in allen drei Programmen (Logger, Tracker, Master). Ohne Display ko
    mit der Taste am Board (T-Beam: GPIO38, Heltec: PRG) wieder an. Ohne Taste (`BUTTON_PIN -1`) bleibt es dauerhaft an.
 5. Beim Eigenbau die Pins `OLED_SDA/OLED_SCL` und `BUTTON_PIN` im Abschnitt "Allgemeiner ESP32-S3" anpassen.
 
+## Dein eigenes Boot: Master + Tracker in einem Geraet (`boatmaster_tbeam`)
+
+Ein T-Beam bei dir im Boot reicht: Er empfaengt die LoRa-Pakete der anderen Boote, liest sein eigenes GPS (1x pro Sekunde)
+und schickt **alles per Bluetooth an dein Android-Handy** (`/gateway.html`). Er sendet selbst nichts per LoRa; deine eigene
+Position kommt ohne Funkweg und damit **verlustfrei** (Bluetooth puffert bis zu 3000 Pakete).
+
+```bash
+pio run -e boatmaster_tbeam -t upload
+```
+- LoRa-Nr deines Boots: im Admin einen Tracker fuer dein Boot anlegen und dessen LoRa-Nr in `platformio.ini` bei
+  `-DOWN_TRACKER_ID=` eintragen. Auf der Gateway-Seite ist dann "Eigenes Boot per Handy-GPS" nicht noetig.
+- Ampel gruen = Handy per Bluetooth verbunden **und** eigener GPS-Fix; gelb blinkt = eines davon fehlt.
+- Die anderen Boote nutzen `tracker_tbeam` (je eine eigene `TRACKER_ID`, im Admin vergeben).
+
+## Ohne Hotspot (nur LoRa)
+
+`tracker_tbeam` ist jetzt ohne Hotspot-Upload gebaut (`-DHOTSPOT_UPLOAD=0`): kein WLAN, keine `secrets.h` noetig, weniger
+Stromverbrauch. Die Position geht per LoRa zum Master. **Bedenke:** LoRa hat keine Quittung. Faellt ein Paket genau am
+Zieldurchgang aus, wird die Zeit ungenauer (Ergebnis zeigt `±` und Warnung). Das Flash-Log im Tracker bleibt als Backup:
+nach der Regatta per USB `d` im seriellen Monitor, CSV speichern und mit `scripts/upload-log.js` auf den Server laden.
+Die Taste loescht das Log in diesem Modus nicht (nur per seriellem Befehl `e`). Den Hotspot-Upload kannst du spaeter
+jederzeit wieder einschalten (`-DHOTSPOT_UPLOAD=1` + `secrets.h`).
+
 ## Status-Ampel (optional, Modul mit 4 Pins: GND, Rot, Gelb, Gruen)
 
 Funktioniert in Logger, Tracker und Master. Anschluss: GND an GND, die drei Farb-Pins an freie GPIOs. Die Pins stehen in

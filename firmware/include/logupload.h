@@ -9,16 +9,18 @@
  * TRACKER_TOKEN, SERVER_CA_PEM, ALLOW_INSECURE_TLS).
  */
 #include <Arduino.h>
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
 #include <LittleFS.h>
 #include "config.h"
 #include "protocol.h"
 
 #ifndef HOTSPOT_UPLOAD
-#define HOTSPOT_UPLOAD 1            // 0 = nur im Flash aufzeichnen (Backup per USB)
+#define HOTSPOT_UPLOAD 1            // 0 = nur im Flash aufzeichnen (Backup per USB), kein WLAN, kein secrets.h noetig
+#endif
+#if HOTSPOT_UPLOAD
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #endif
 #define LOG_PATH            "/log.bin"
 #define OFFSET_PATH         "/uploaded.txt"
@@ -148,6 +150,7 @@ static bool logupHandleChar(char c) {
   return false;
 }
 
+#if HOTSPOT_UPLOAD
 // ---------- Upload ----------
 
 static bool postChunk(const String &body) {
@@ -264,6 +267,8 @@ static void uploadTask(void *) {
     WiFi.mode(WIFI_OFF);
   }
 }
+
+#endif  // HOTSPOT_UPLOAD
 
 /** Dateisystem oeffnen, Log reparieren, Upload-Task starten. Als erstes im setup() nach Serial.begin() aufrufen. */
 static void logupInit() {

@@ -6,10 +6,15 @@
  *    Grundlage fuer die offizielle Zeitmessung
  *  - Serielle Befehle (115200): 'd' Log als CSV, 'e' Log loeschen, 's' Status, 'u' Upload sofort versuchen
  */
+// secrets.h: noetig fuer den Hotspot-Upload (HOTSPOT_UPLOAD=1) und kann TRACKER_ID setzen. Ohne Upload darf die Datei
+// fehlen - dann TRACKER_ID per Build-Flag (-DTRACKER_ID=7) oder in config.h setzen.
+#ifndef HOTSPOT_UPLOAD
+#define HOTSPOT_UPLOAD 1
+#endif
 #if __has_include("secrets.h")
 #include "secrets.h"
-#else
-#error "include/secrets.h fehlt: include/secrets.h.example kopieren und ausfuellen"
+#elif HOTSPOT_UPLOAD
+#error "include/secrets.h fehlt: include/secrets.h.example kopieren und ausfuellen (oder -DHOTSPOT_UPLOAD=0)"
 #endif
 
 #include <Arduino.h>
@@ -90,7 +95,7 @@ void handleSerial() {
     if (c == 's') {
       Serial.printf("ID %d | Sat %d | Fix %s | gesendet %u | Log %u | hochgeladen %u | %s\n", TRACKER_ID,
                     gps.satellites.isValid() ? (int)gps.satellites.value() : -1, lastFix.valid ? "ja" : "nein",
-                    txCount, (unsigned)logupEntries(), (unsigned)logupUploaded(), upStateText());
+                    txCount, (unsigned)logupEntries(), (unsigned)logupUploaded(), HOTSPOT_UPLOAD ? upStateText() : "Upload aus");
     }
   }
 }
@@ -102,8 +107,13 @@ void updateDisplay() {
   snprintf(l[1], sizeof(l[1]), "GPS %s  Sat %d", lastFix.valid ? "OK" : "suche", gps.satellites.isValid() ? (int)gps.satellites.value() : 0);
   snprintf(l[2], sizeof(l[2]), "%.1f kn  Akku %s%d%%", gps.speed.knots(), b < 0 ? "?" : "", b < 0 ? 0 : (int)lround(b * 100));
   snprintf(l[3], sizeof(l[3]), "LoRa TX %u", (unsigned)txCount);
+#if HOTSPOT_UPLOAD
   snprintf(l[4], sizeof(l[4]), "Log %u Up %u", (unsigned)logupEntries(), (unsigned)logupUploaded());
   snprintf(l[5], sizeof(l[5]), "%s", upStateText());
+#else
+  snprintf(l[4], sizeof(l[4]), "Log %u", (unsigned)logupEntries());
+  l[5][0] = 0;
+#endif
   const char *lines[6] = {l[0], l[1], l[2], l[3], l[4], l[5]};
   displayShow(lines, 6);
 }

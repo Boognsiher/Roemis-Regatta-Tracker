@@ -38,18 +38,24 @@ static void tlButton(const LedInputs &in) {
 #if BUTTON_PIN >= 0
   uint32_t now = millis();
   bool down = digitalRead(BUTTON_PIN) == LOW;
+#if HOTSPOT_UPLOAD
   bool synced = ledSynced(upState == UP_DONE, logupEntries(), logupUploaded());
+#else
+  bool synced = true;   // ohne Upload gibt es keinen "hochgeladen"-Zustand: Dauer-Anzeige zeigt nur Fehler/OK
+#endif
   if (down && !tlPressed) { tlPressed = true; tlLongDone = false; tlPressStart = now; }
   if (down && tlPressed && !tlLongDone && now - tlPressStart >= TL_LONG_PRESS_MS) {
     tlLongDone = true;
-    if (synced) { eraseLog(); ledShowSteady(STEADY_GREEN, 3000); }
+    if (HOTSPOT_UPLOAD && synced) { eraseLog(); ledShowSteady(STEADY_GREEN, 3000); }   // ohne Upload nur per seriellem Befehl 'e'
     else ledShowSteady(STEADY_RED, 3000);             // abgelehnt: noch nicht alles hochgeladen
   }
   if (!down && tlPressed) {
     tlPressed = false;
     if (!tlLongDone && now - tlPressStart >= TL_SHORT_PRESS_MIN_MS) {
       ledShowSteady(decideSteady(in, synced), TL_STEADY_MS);
+#if HOTSPOT_UPLOAD
       uploadNow = true;
+#endif
     }
   }
 #else
