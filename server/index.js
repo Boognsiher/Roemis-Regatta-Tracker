@@ -392,3 +392,15 @@ server.listen(PORT, () => {
   console.log(`Dashboard: http://localhost:${PORT}/`);
   console.log(`Admin:     http://localhost:${PORT}/admin.html`);
 });
+
+// Sauber beenden (docker stop / Neustart): ausstehende Daten speichern, dann Schluss. Als Hauptprozess im Container
+// reagiert Node sonst nicht auf SIGTERM, und Docker muss nach Ablauf der Wartezeit hart beenden.
+function shutdown(signal) {
+  console.log(`[${signal}] beende ...`);
+  try { store.flush(); regatta.flush(); } catch (err) { console.error('Speichern beim Beenden fehlgeschlagen:', err.message); }
+  for (const client of wss.clients) client.terminate();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 2000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

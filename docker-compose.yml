@@ -3,6 +3,7 @@ services:
     build: .
     container_name: regatta-tracker
     restart: unless-stopped
+    stop_grace_period: 15s
     ports:
       - "${HOST_PORT:-3000}:3000"
     environment:

@@ -68,6 +68,13 @@ function scheduleSave() {
   }, 1000);
 }
 
+/** Ausstehende Speicherung sofort ausfuehren (beim Beenden des Servers). */
+function flush() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  saveJsonAtomic(TRACKERS_FILE, trackers);
+  saveJsonAtomic(POSITIONS_FILE, positions);
+}
+
 function pickColor() {
   const used = new Set(Object.values(trackers).map((t) => t.color));
   const free = COLOR_PALETTE.find((c) => !used.has(c));
@@ -265,6 +272,7 @@ function clearTrail(id) {
 }
 
 module.exports = {
+  flush,
   findTrackerByToken,
   decimate,
   staleMap,

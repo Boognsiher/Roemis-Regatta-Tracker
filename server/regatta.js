@@ -30,6 +30,12 @@ function save() {
   }, 300);
 }
 
+/** Ausstehende Speicherung sofort ausfuehren (beim Beenden des Servers). */
+function flush() {
+  if (timer) { clearTimeout(timer); timer = null; }
+  store.saveJsonAtomic(FILE, state);
+}
+
 function httpError(status, message) {
   const e = new Error(message);
   e.status = status;
@@ -318,7 +324,7 @@ function publicState() {
 }
 
 module.exports = {
-  state, STATUS_CODES, httpError, publicState,
+  flush, state, STATUS_CODES, httpError, publicState,
   addClass, importClasses, deleteClass, registerBoat, unregisterBoat, setLine,
   getRace, createRace, updateRace, deleteRace, startRace, clearStart, setOverride, setOfficial,
   computeResults, toCsv
