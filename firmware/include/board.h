@@ -7,6 +7,7 @@
  */
 #include <Arduino.h>
 #include "config.h"
+#include "battery.h"
 
 #if defined(BOARD_TBEAM_V12)
 #include <Wire.h>
@@ -14,6 +15,25 @@
 
 static XPowersAXP2101 pmu;
 static bool pmuOk = false;
+
+// Ladestrom-Stufe des Strom-Chips (Werte siehe BATT_CHARGE_STEPS_MA in battery.h)
+static void pmuSetChargeCurrent(uint16_t ma) {
+  switch (nearestChargeMa(ma)) {
+    case 100:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_100MA); break;
+    case 125:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_125MA); break;
+    case 150:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_150MA); break;
+    case 175:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_175MA); break;
+    case 200:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_200MA); break;
+    case 300:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_300MA); break;
+    case 400:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_400MA); break;
+    case 500:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_500MA); break;
+    case 600:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_600MA); break;
+    case 700:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_700MA); break;
+    case 800:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_800MA); break;
+    case 900:  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_900MA); break;
+    default:   pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_1000MA); break;
+  }
+}
 
 // needLora = false spart Strom (Logger ohne LoRa).
 inline void boardInit(bool needLora) {
@@ -29,8 +49,15 @@ inline void boardInit(bool needLora) {
     pmu.setPowerChannelVoltage(XPOWERS_ALDO2, 3300); // LoRa (SX1262)
     pmu.enablePowerOutput(XPOWERS_ALDO2);
   }
-  pmu.disableTSPinMeasure();      // kein Akku-Temperaturfuehler am T-Beam
+  pmu.disableTSPinMeasure();      // kein Akku-Temperaturfuehler am T-Beam (also nicht bei Frost laden!)
   pmu.enableBattVoltageMeasure();
+
+  // Akku: Ladeschlussspannung 4.2 V, Ladestrom und Abschaltspannung aus config.h/battery.h
+  pmu.setChargeTargetVoltage(XPOWERS_AXP2101_CHG_VOL_4V2);
+  pmuSetChargeCurrent(BATT_CHARGE_MA);
+  pmu.setSysPowerDownVoltage(clampCutoffMv(BATT_CUTOFF_MV));
+  pmu.enableCellbatteryCharge();
+  Serial.printf("Akku: Ladestrom %u mA, Abschaltung bei %u mV\n", nearestChargeMa(BATT_CHARGE_MA), clampCutoffMv(BATT_CUTOFF_MV));
   delay(200);                     // GPS/LoRa hochfahren lassen
 }
 
