@@ -105,7 +105,7 @@ app.post('/api/trackers/:id/position', authGuard.middleware, (req, res) => {
     ts: isFiniteNumber(ts) ? ts : Date.now()
   });
 
-  broadcast({ type: 'position', tracker: store.getPublicTracker(id) });
+  broadcast({ type: 'position', tracker: store.getPublicTracker(id, { trail: false }) });
   res.json({ ok: true, entry });
 });
 
@@ -133,7 +133,7 @@ app.post('/api/trackers/:id/positions', authGuard.middleware, (req, res) => {
     });
     accepted += 1;
   }
-  if (accepted) broadcast({ type: 'position', tracker: store.getPublicTracker(id) });
+  if (accepted) broadcast({ type: 'position', tracker: store.getPublicTracker(id, { trail: false }) });
   res.json({ ok: true, accepted });
 });
 
@@ -190,7 +190,7 @@ app.post('/api/gateway/positions', requireGateway, (req, res) => {
     touched.add(tracker.id);
     accepted += 1;
   }
-  for (const id of touched) broadcast({ type: 'position', tracker: store.getPublicTracker(id) });
+  for (const id of touched) broadcast({ type: 'position', tracker: store.getPublicTracker(id, { trail: false }) });
   res.json({ ok: true, accepted, unknown: [...unknown] });
 });
 
@@ -325,7 +325,7 @@ wss.on('connection', (ws) => {
 // Periodisch pruefen, ob Tracker "stale" (offline) geworden sind, damit die Karte das auch
 // ohne neues Positions-Update aktualisiert (z.B. Handy hat Netz verloren).
 setInterval(() => {
-  broadcast({ type: 'snapshot', trackers: store.listPublicTrackers() });
+  broadcast({ type: 'status', stale: store.staleMap() }); // klein (nur Online/Offline) und haelt die Verbindung offen
 }, 15000);
 
 server.listen(PORT, () => {

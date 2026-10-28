@@ -205,18 +205,42 @@ function isStale(entry) {
   return Date.now() - entry.ts > STALE_AFTER_MS;
 }
 
-function getPublicTracker(id) {
+// Wie viele Spurpunkte pro Boot beim Laden/Verbinden an die Zuschauer gehen (ausgeduennt, damit es klein bleibt).
+const PUBLIC_TRAIL_POINTS = parseInt(process.env.PUBLIC_TRAIL_POINTS || '150', 10);
+
+/** Gleichmaessig auf hoechstens max Punkte ausduennen (erster und letzter Punkt bleiben). */
+function decimate(arr, max) {
+  if (arr.length <= max) return arr;
+  const out = [];
+  const step = (arr.length - 1) / (max - 1);
+  for (let i = 0; i < max; i += 1) out.push(arr[Math.round(i * step)]);
+  return out;
+}
+
+/**
+ * Oeffentliche Sicht auf einen Tracker. Standard: mit (ausgeduennter) Spur - fuer das erste Laden.
+ * { trail: false }: nur letzte Position, ohne Spur - fuer Live-Updates (der Browser haengt sie selbst an die Spur an).
+ */
+function getPublicTracker(id, { trail = true } = {}) {
   const t = trackers[id];
   if (!t) return null;
   const pos = positions[id] || { latest: null, trail: [] };
-  return {
+  const out = {
     id: t.id,
     name: t.name,
     color: t.color,
     latest: pos.latest,
-    trail: pos.trail,
     stale: isStale(pos.latest)
   };
+  if (trail) out.trail = decimate(pos.trail, PUBLIC_TRAIL_POINTS);
+  return out;
+}
+
+/** Nur der Online/Offline-Zustand aller Tracker (sehr klein) - fuer die regelmaessige Statusmeldung. */
+function staleMap() {
+  const out = {};
+  for (const t of Object.values(trackers)) out[t.id] = isStale((positions[t.id] || {}).latest);
+  return out;
 }
 
 function listPublicTrackers() {
@@ -231,6 +255,8 @@ function clearTrail(id) {
 }
 
 module.exports = {
+  decimate,
+  staleMap,
   getTrackerByLoraId,
   setLoraId,
   readHistory,

@@ -243,6 +243,9 @@ App (Karte, Admin, Speicherung) bleibt unveraendert.
   absendende IP 15 Minuten gesperrt (HTTP 429; hinter dem Cloudflare Tunnel zaehlt die echte Besucher-IP aus
   `CF-Connecting-IP`). Einstellbar mit `AUTH_MAX_FAILURES` und `AUTH_BLOCK_MINUTES`. Die oeffentliche Live-Karte ist
   nie betroffen. Ein Neustart des Containers hebt Sperren auf.
+- **Viele Zuschauer:** Live-Updates enthalten nur die letzte Position (ca. 200 Byte), die Spur wird beim Laden ausgeduennt
+  (`PUBLIC_TRAIL_POINTS`, Standard 150) und vom Browser selbst fortgeschrieben; alle 15 s kommt nur eine kleine Statusmeldung.
+  Gemessen: 100 gleichzeitige Zuschauer bei 10 Trackern mit je 1 Update/s ergeben ca. 1.6 Mbit/s Upload am NAS.
 - Tokens werden nur noch im Header akzeptiert (nicht in der URL), Vergleich zeitkonstant; Antworten enthalten
   Schutz-Header (`X-Frame-Options`, `nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`).
 - Das Admin-Token wird im Browser (localStorage) gespeichert: auf geteilten Rechnern nach Gebrauch abmelden bzw. den
