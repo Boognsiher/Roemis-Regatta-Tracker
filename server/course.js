@@ -35,12 +35,18 @@ function toXY(pl, fixes) {
   return fixes.map((f) => { const q = pl.proj(f); return { t: f.ts, x: q.x, y: q.y }; });
 }
 
-/** Punkt der staerksten Kursaenderung (Rundung) innerhalb eines Besuchs [i0..i1] um die Boje m. */
-function findApex(pts, i0, i1, m, o) {
+/**
+ * Punkt der staerksten Kursaenderung (Rundung) innerhalb eines Besuchs [i0..i1] um die Boje m.
+ * Nur Punkte innerhalb von maxDistM kommen als Rundung in Frage. Ohne deutliche Kursaenderung (Vorbeifahrt) zaehlt der
+ * naechste Punkt, aber nur, wenn er nah genug an der Boje liegt (passMaxM).
+ */
+function findApex(pts, i0, i1, m, o, maxDistM = Infinity, passMaxM = Infinity) {
   const W = o.turnWindowS * 1000;
   let best = null;
   let closest = null;
   for (let j = i0; j <= i1; j += 1) {
+    const dm = dist(pts[j], m);
+    if (dm > maxDistM) continue;
     let a = j;
     while (a > 0 && pts[j].t - pts[a].t < W) a -= 1;
     if (pts[j].t - pts[a].t < W) continue;                  // zu wenig Vorlauf
@@ -48,30 +54,40 @@ function findApex(pts, i0, i1, m, o) {
     while (b < pts.length - 1 && pts[b].t - pts[j].t < W) b += 1;
     if (pts[b].t - pts[j].t < W) continue;                  // noch zu wenig Nachlauf (Boot gerade erst an der Boje)
     const turn = dist(pts[a], pts[j]) < 8 || dist(pts[j], pts[b]) < 8 ? 0 : angDiff(bearing(pts[a], pts[j]), bearing(pts[j], pts[b]));
-    const dm = dist(pts[j], m);
     if (!best || turn > best.turn) best = { j, turn, dm };
     if (!closest || dm < closest.dm) closest = { j, turn, dm };
   }
   if (!best) return null;
-  const pick = best.turn >= o.minTurnDeg ? best : closest;
-  const p = pts[pick.j];
-  return { t: p.t, x: p.x, y: p.y, turn: pick.turn, passOnly: best.turn < o.minTurnDeg };
+  if (best.turn >= o.minTurnDeg) {
+    const p = pts[best.j];
+    return { t: p.t, x: p.x, y: p.y, turn: best.turn, passOnly: false };
+  }
+  if (closest.dm > passMaxM) return null;                   // zu weit weg fuer eine blosse Vorbeifahrt
+  const p = pts[closest.j];
+  return { t: p.t, x: p.x, y: p.y, turn: closest.turn, passOnly: true };
 }
 
-/** Rundungen der Reihe nach (Boje 1, 2, ...) im Zeitfenster [tFrom, tTo]. */
+/**
+ * Rundungen der Reihe nach (Boje 1, 2, ...) im Zeitfenster [tFrom, tTo].
+ * Ein "Besuch" beginnt beim Betreten des Kreises (radiusM) und endet erst deutlich ausserhalb (Hysterese), damit
+ * GPS-Rauschen an der Kreisgrenze ihn nicht zerhackt.
+ */
 function detectRoundings(pts, marks, tFrom, tTo, radiusM, o) {
   const events = [];
+  const outR = radiusM * 1.2 + 20;
   let i = 0;
   while (i < pts.length && pts[i].t < tFrom) i += 1;
-  for (let k = 0; k < marks.length && i < pts.length; k += 1) {
+  let k = 0;
+  while (k < marks.length && i < pts.length) {
     const m = marks[k];
     while (i < pts.length && pts[i].t <= tTo && dist(pts[i], m) > radiusM) i += 1;
     if (i >= pts.length || pts[i].t > tTo) break;
     const i0 = i;
-    while (i < pts.length && pts[i].t <= tTo && dist(pts[i], m) <= radiusM) i += 1;
-    const apex = findApex(pts, i0, i - 1, m, o);
-    if (!apex) break;                                       // Rundung noch nicht abgeschlossen
-    events.push({ k, ...apex });
+    while (i < pts.length && pts[i].t <= tTo && dist(pts[i], m) <= outR) i += 1;
+    const apex = findApex(pts, i0, i - 1, m, o, radiusM, radiusM * 0.6);
+    if (apex) { events.push({ k, ...apex }); k += 1; continue; }
+    if (i >= pts.length || pts[i].t > tTo) break;           // Besuch noch nicht abgeschlossen (Daten enden)
+    // sonst: blosse Vorbeifahrt in grossem Abstand -> weiter nach einem naechsten Besuch suchen
   }
   return events;
 }

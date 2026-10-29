@@ -128,3 +128,28 @@ test('Fortschritt waechst monoton ueber das Rennen; Vorstart, kein Kurs, keine D
   const none = course.liveRanking({ line, race, approxMarks: drawn, now: gun + 1000, boats: [{ trackerId: 'N', name: 'N', yardstick: 100, fixes: [] }] });
   assert.strictEqual(none.entries[0].status, 'NODATA');
 });
+
+// Regression: GPS-Rauschen an der Kreisgrenze darf den "Besuch" nicht abbrechen (sonst wird die echte Wende uebersehen)
+test('Rundung wird auch gefunden, wenn das Boot den Suchkreis mit Rauschen an der Grenze betritt', () => {
+  const noise = rng(5);
+  const pts = [];
+  // 1 Hz: anfahren (2 m/s) von (-400,0) bis zur Boje (0,0), dann 90 Grad nach Norden weiter bis (0,400)
+  for (let t = 0; t <= 400; t += 1) {
+    const s = t * 2;
+    const x = s <= 400 ? -400 + s : 0;
+    const y = s <= 400 ? 0 : s - 400;
+    pts.push({ t: t * 1000, x: x + noise() * 6, y: y + noise() * 6 });
+  }
+  const marks = [{ x: 0, y: 0 }];
+  const ev = course.detectRoundings(pts, marks, 0, Infinity, 250, course.DEFAULTS);
+  assert.strictEqual(ev.length, 1);
+  assert.ok(Math.hypot(ev[0].x, ev[0].y) < 40, `Rundung bei (${Math.round(ev[0].x)}, ${Math.round(ev[0].y)})`);
+  assert.ok(ev[0].turn > 60 && !ev[0].passOnly, `Kursaenderung ${ev[0].turn}`);
+});
+
+test('reine Vorbeifahrt weit weg von der Boje zaehlt nicht als Rundung', () => {
+  const pts = [];
+  for (let t = 0; t <= 300; t += 1) pts.push({ t: t * 1000, x: -300 + t * 2, y: 240 });   // geradeaus in 240 m Abstand
+  const ev = course.detectRoundings(pts, [{ x: 0, y: 0 }], 0, Infinity, 250, course.DEFAULTS);
+  assert.strictEqual(ev.length, 0);
+});
