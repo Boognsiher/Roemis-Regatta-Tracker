@@ -66,7 +66,7 @@ function sideOf(pl, p) {
  * Rueckgabe: [{ ts, dir: 'start'|'finish', uncertaintyMs }] sortiert nach ts.
  * 'start'  = Vorstartseite -> Kursseite, 'finish' = Kursseite -> Vorstartseite.
  */
-function findCrossings(pl, fixes) {
+function findCrossings(pl, fixes, outside = null) {
   const out = [];
   let prev = null;
   let prevSide = 0;
@@ -87,6 +87,8 @@ function findCrossings(pl, fixes) {
           dir: side === 1 ? 'start' : 'finish',
           uncertaintyMs: f.ts - prev.ts
         });
+      } else if (outside) {
+        outside.push({ ts: prev.ts + u * (f.ts - prev.ts), meters: along < 0 ? -along * pl.len : (along - 1) * pl.len });
       }
     }
     if (side !== 0) prevSide = side;
@@ -125,7 +127,7 @@ function normalizeFixes(fixes) {
  * Rueckgabe: { status: 'FIN'|'DNF'|'DNS', laps:[{n,ts,lapSeconds}], finishTs, elapsedSec,
  *              uncertaintyMs, warnings:[] }
  */
-function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null }) {
+function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null, lapMode = 'bounce' }) {
   const warnings = [];
   const fixes = normalizeFixes(fixesRaw);
   if (!fixes.length || fixes[fixes.length - 1].ts < startTs) {
@@ -133,7 +135,8 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
   }
 
   // Zielschluss: Durchgaenge nach endTs zaehlen nicht (z.B. wenn danach die naechste Wettfahrt gesegelt wurde)
-  const crossings = findCrossings(pl, fixes).filter((c) => endTs == null || c.ts <= endTs);
+  const outside = [];
+  const crossings = findCrossings(pl, fixes, outside).filter((c) => endTs == null || c.ts <= endTs);
   const atGun = positionAt(fixes, startTs);
   const sideAtGun = atGun ? sideOf(pl, atGun) : -1;
 
@@ -151,17 +154,22 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
       if (c.dir === 'finish') returnedFromOcs = true;
       continue;
     }
-    if (c.dir === 'start') {
+    if (lapMode === 'loop') {
+      // Rundkurs: die Linie wird jede Runde in DIESELBE Richtung gekreuzt (Vorstartseite -> Kursseite).
+      // Erster Durchgang = Start, jeder weitere = Ende einer Runde.
+      if (c.dir !== 'start') continue;
+      if (!started) { started = true; startCrossingTs = c.ts; continue; }
+    } else if (c.dir === 'start') {
       if (!started) startCrossingTs = startCrossingTs ?? c.ts;
       started = true;
       continue;
+    } else if (!started) {
+      continue;                                    // 'bounce': Ziel-Richtung zaehlt nur nach einem Start-Durchgang
     }
-    // dir === 'finish'
-    if (!started) continue;
     const refTs = lastLapTs ?? startTs;
     if ((c.ts - refTs) / 1000 < minLapSeconds) {
       // Zu schnell nach dem letzten Durchgang: GPS-Zittern an der Linie, nicht werten.
-      started = false;
+      if (lapMode !== 'loop') started = false;
       warnings.push(`Durchgang bei ${new Date(c.ts).toISOString()} ignoriert (< ${minLapSeconds}s seit letzter Runde)`);
       continue;
     }
@@ -172,12 +180,18 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
       uncertaintyMs: c.uncertaintyMs
     });
     lastLapTs = c.ts;
-    started = false;
+    if (lapMode !== 'loop') started = false;
     if (laps.length === totalLaps) break;
   }
 
   if (laps.length < totalLaps) {
-    return { status: 'DNF', laps, finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: warnings.concat(`Nur ${laps.length} von ${totalLaps} Runden erkannt`) };
+    const out = outside.filter((o) => o.ts >= startTs && (endTs == null || o.ts <= endTs));
+    const extra = [`Nur ${laps.length} von ${totalLaps} Runden erkannt`];
+    if (out.length) {
+      const nearest = Math.min(...out.map((o) => o.meters));
+      extra.push(`${out.length} Durchgang/Durchgaenge ausserhalb der Linien-Marken (nur ${Math.round(nearest)} m daneben) - Linie zu kurz oder Boot ausserhalb der Marken?`);
+    }
+    return { status: 'DNF', laps, finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: warnings.concat(extra) };
   }
 
   const fin = laps[laps.length - 1];

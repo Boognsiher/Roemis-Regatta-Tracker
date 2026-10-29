@@ -113,3 +113,16 @@ test('Kurs mit exact-Flag wird gespeichert und in neue Wettfahrten uebernommen',
   assert.strictEqual(r.course.exact, true);
   assert.strictEqual(regatta.setCourse([pt(0, 150)], 200).exact, false);
 });
+
+test('Kurs mit Tor wird gespeichert, ungueltige Formen werden abgelehnt', () => {
+  const c = regatta.setCourse([pt(0, 150), { a: pt(-30, 80), b: pt(30, 80) }], 200, true);
+  assert.strictEqual(c.marks.length, 2);
+  assert.ok(c.marks[1].a && c.marks[1].b);
+  assert.throws(() => regatta.setCourse([{ a: pt(0, 0) }], 200), /Kurs/);          // Tor ohne b
+  assert.throws(() => regatta.setCourse([{ a: { lat: 99, lon: 0 }, b: pt(0, 0) }], 200), /Kurs/);
+  const r = regatta.createRace({ name: 'Tor' });
+  assert.ok(r.course.marks[1].a);
+  const sel = regatta.exportSelection({});
+  assert.ok(sel.waypoints.some((w) => w.name === 'Tor 2 A') && sel.waypoints.some((w) => w.name === 'Tor 2 B'));
+  regatta.setCourse([pt(0, 150)], 200, false);
+});

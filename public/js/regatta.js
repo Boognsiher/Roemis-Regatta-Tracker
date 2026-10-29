@@ -117,15 +117,22 @@
       L.polyline([[lineDraft.a.lat, lineDraft.a.lon], [lineDraft.b.lat, lineDraft.b.lon]], { color: '#e6194b', weight: 4 }).addTo(layer);
     }
     courseDraft.marks.forEach((m, i) => {
-      L.circleMarker([m.lat, m.lon], { radius: 9, color: '#f58231', fillOpacity: 0.7 }).bindTooltip(`Boje ${i + 1}${courseDraft.exact ? '' : ' (grob)'}`, { permanent: true, direction: 'top' }).addTo(layer);
+      if (m.a) {
+        L.polyline([[m.a.lat, m.a.lon], [m.b.lat, m.b.lon]], { color: '#f58231', weight: 4 }).addTo(layer);
+        [m.a, m.b].forEach((q, j) => L.circleMarker([q.lat, q.lon], { radius: 7, color: '#f58231', fillOpacity: 0.8 })
+          .bindTooltip(j === 0 ? `Tor ${i + 1}` : 'B', { permanent: j === 0, direction: 'top' }).addTo(layer));
+      } else {
+        L.circleMarker([m.lat, m.lon], { radius: 9, color: '#f58231', fillOpacity: 0.7 }).bindTooltip(`Boje ${i + 1}${courseDraft.exact ? '' : ' (grob)'}`, { permanent: true, direction: 'top' }).addTo(layer);
+      }
     });
-    if (courseDraft.marks.length > 1) {
-      L.polyline(courseDraft.marks.map((m) => [m.lat, m.lon]), { color: '#f58231', weight: 2, dashArray: '6 6' }).addTo(layer);
+    const centers = courseDraft.marks.map((m) => (m.a ? { lat: (m.a.lat + m.b.lat) / 2, lon: (m.a.lon + m.b.lon) / 2 } : m));
+    if (centers.length > 1) {
+      L.polyline(centers.map((m) => [m.lat, m.lon]), { color: '#f58231', weight: 2, dashArray: '6 6' }).addTo(layer);
     }
     detectedMarks.filter((m) => !m.approx && !m.exact).forEach((m, i) => {
       L.circleMarker([m.lat, m.lon], { radius: 6, color: '#3ba7ff', fillOpacity: 0.9 }).bindTooltip(`erkannt (${m.n} Rundungen)`, { direction: 'bottom' }).addTo(layer);
     });
-    const all = pts.map((k) => [lineDraft[k].lat, lineDraft[k].lon]).concat(courseDraft.marks.map((m) => [m.lat, m.lon]));
+    const all = pts.map((k) => [lineDraft[k].lat, lineDraft[k].lon]).concat(courseDraft.marks.map((m) => (m.a ? [m.a.lat, m.a.lon] : [m.lat, m.lon])));
     if (all.length && !drawLine.fitted) { drawLine.fitted = true; map.fitBounds(all, { maxZoom: 17, padding: [30, 30] }); }
   }
   function renderLineControls() {
@@ -175,26 +182,48 @@
   // ---------- Kurs (Bojen) ----------
   function renderCourse() {
     const list = $('course-list');
-    list.innerHTML = courseDraft.marks.length
-      ? courseDraft.marks.map((m, i) => `
+    const n = courseDraft.marks.length;
+    const ctl = (i) => `
+          <button class="secondary up" ${i === 0 ? 'disabled' : ''}>&uarr;</button>
+          <button class="secondary down" ${i === n - 1 ? 'disabled' : ''}>&darr;</button>
+          <button class="danger del">&times;</button>`;
+    list.innerHTML = n
+      ? courseDraft.marks.map((m, i) => (m.a ? `
+        <div class="row" data-i="${i}">
+          <div style="min-width:70px"><b>Tor ${i + 1}</b></div>
+          <input type="text" class="coord gate-c" data-end="a" value="${esc(Coords.format(m.a))}" style="min-width:210px;flex:1" />
+          <input type="text" class="coord gate-c" data-end="b" value="${esc(Coords.format(m.b))}" style="min-width:210px;flex:1" />
+          ${ctl(i)}
+          <span class="hint">Durchfahrt zwischen A und B zaehlt</span>
+        </div>` : `
         <div class="row" data-i="${i}">
           <div style="min-width:70px"><b>Boje ${i + 1}</b></div>
           <input type="text" class="coord course-c" value="${esc(Coords.format(m))}" style="min-width:250px;flex:1" />
-          <button class="secondary up" ${i === 0 ? 'disabled' : ''}>&uarr;</button>
-          <button class="secondary down" ${i === courseDraft.marks.length - 1 ? 'disabled' : ''}>&darr;</button>
-          <button class="danger del">&times;</button>
+          ${ctl(i)}
           <span class="hint">${esc(Coords.formatDM(m))}</span>
-        </div>`).join('')
+        </div>`)).join('')
       : '<p class="hint">Noch keine Boje.</p>';
     list.querySelectorAll('.row').forEach((row) => {
       const i = Number(row.dataset.i);
-      const input = row.querySelector('.course-c');
-      input.addEventListener('change', () => {
-        const c = Coords.parse(input.value);
-        if (!c) { input.style.borderColor = 'var(--danger)'; $('course-msg').textContent = `Boje ${i + 1}: Koordinate nicht lesbar.`; return; }
-        courseDraft.marks[i] = c; courseDraft.exact = true;
-        $('course-msg').textContent = '';
-        renderCourse(); drawLine();
+      const bad = (input, label) => { input.style.borderColor = 'var(--danger)'; $('course-msg').textContent = `${label}: Koordinate nicht lesbar.`; };
+      const single = row.querySelector('.course-c');
+      if (single) {
+        single.addEventListener('change', () => {
+          const c = Coords.parse(single.value);
+          if (!c) return bad(single, `Boje ${i + 1}`);
+          courseDraft.marks[i] = c; courseDraft.exact = true;
+          $('course-msg').textContent = '';
+          renderCourse(); drawLine();
+        });
+      }
+      row.querySelectorAll('.gate-c').forEach((input) => {
+        input.addEventListener('change', () => {
+          const c = Coords.parse(input.value);
+          if (!c) return bad(input, `Tor ${i + 1}`);
+          courseDraft.marks[i] = { ...courseDraft.marks[i], [input.dataset.end]: c }; courseDraft.exact = true;
+          $('course-msg').textContent = '';
+          renderCourse(); drawLine();
+        });
       });
       row.querySelector('.up').addEventListener('click', () => { [courseDraft.marks[i - 1], courseDraft.marks[i]] = [courseDraft.marks[i], courseDraft.marks[i - 1]]; renderCourse(); drawLine(); });
       row.querySelector('.down').addEventListener('click', () => { [courseDraft.marks[i + 1], courseDraft.marks[i]] = [courseDraft.marks[i], courseDraft.marks[i + 1]]; renderCourse(); drawLine(); });
@@ -202,10 +231,21 @@
     });
     $('course-radius').value = courseDraft.radiusM;
     $('course-exact').checked = courseDraft.exact;
-    // Erkannte Bojen koennen uebernommen werden, wenn es genau so viele gibt wie gezeichnete
+    // Erkannte Bojen koennen uebernommen werden, wenn es genau so viele gibt wie gezeichnete (und kein Tor dabei ist)
     const found = detectedMarks.filter((m) => !m.approx && !m.exact);
-    $('course-adopt').style.display = found.length && found.length === courseDraft.marks.length ? '' : 'none';
+    $('course-adopt').style.display = found.length && found.length === n && !courseDraft.marks.some((m) => m.a) ? '' : 'none';
   }
+  $('gate-add').addEventListener('click', () => {
+    const a = Coords.parse($('gate-a').value);
+    const b = Coords.parse($('gate-b').value);
+    if (!a || !b) { $('course-msg').textContent = 'Tor: beide Koordinaten (Marke A und B) eingeben - Beispiel: 46.8419, 10.5130'; return; }
+    if (courseDraft.marks.length >= 20) { $('course-msg').textContent = 'Hoechstens 20 Eintraege.'; return; }
+    courseDraft.marks.push({ a, b });
+    courseDraft.exact = true;
+    $('gate-a').value = ''; $('gate-b').value = '';
+    $('course-msg').textContent = '';
+    renderCourse(); drawLine();
+  });
   $('course-coord-add').addEventListener('click', () => {
     const c = Coords.parse($('course-coord').value);
     if (!c) { $('course-msg').textContent = 'Koordinate nicht lesbar - Beispiele: 46.8419, 10.5130 oder 46°50.514\' N, 10°30.780\' E'; return; }
@@ -218,13 +258,24 @@
   });
   $('course-coord').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('course-coord-add').click(); });
   $('course-bulk-btn').addEventListener('click', () => {
-    const { points, errors } = Coords.parseLines($('course-bulk').value);
+    const marks = [];
+    const errors = [];
+    $('course-bulk').value.split(/\r?\n/).forEach((line, i) => {
+      if (!line.trim()) return;
+      if (line.includes('|')) {                       // Tor: "Marke A | Marke B"
+        const [pa, pb] = line.split('|').map((x) => Coords.parse(x));
+        if (pa && pb) marks.push({ a: pa, b: pb }); else errors.push(i + 1);
+      } else {
+        const c = Coords.parse(line);
+        if (c) marks.push(c); else errors.push(i + 1);
+      }
+    });
     if (errors.length) { $('course-msg').textContent = `Zeile(n) nicht lesbar: ${errors.join(', ')}`; return; }
-    if (!points.length) { $('course-msg').textContent = 'Keine Koordinaten gefunden.'; return; }
-    courseDraft.marks = points.slice(0, 20);
+    if (!marks.length) { $('course-msg').textContent = 'Keine Koordinaten gefunden.'; return; }
+    courseDraft.marks = marks.slice(0, 20);
     courseDraft.exact = true;
     $('course-bulk').value = '';
-    $('course-msg').textContent = `${courseDraft.marks.length} Boje(n) uebernommen - bitte pruefen und "Kurs speichern" klicken.`;
+    $('course-msg').textContent = `${courseDraft.marks.length} Eintrag/Eintraege uebernommen - bitte pruefen und "Kurs speichern" klicken.`;
     renderCourse(); drawLine();
   });
   $('course-exact').addEventListener('change', () => { courseDraft.exact = $('course-exact').checked; });
@@ -322,7 +373,7 @@
   $('race-create').addEventListener('click', guard(async () => {
     const startTs = fromLocalInput($('race-start').value);
     await api('/api/admin/races', 'POST', {
-      name: $('race-name').value, laps: $('race-laps').value, cutoffMinutes: $('race-cutoff').value, startTs: startTs || undefined
+      name: $('race-name').value, laps: $('race-laps').value, cutoffMinutes: $('race-cutoff').value, lapMode: $('race-mode').value, startTs: startTs || undefined
     });
     $('race-name').value = '';
     $('race-start').value = '';
@@ -355,6 +406,9 @@
       <div class="row">
         <div class="field"><label>Runden</label><input type="number" class="rc-laps" min="1" max="10" value="${r.laps}" style="width:70px" /></div>
         <div class="field"><label>Zielschluss (Min. nach Start)</label><input type="number" class="rc-cutoff" min="10" max="1440" value="${r.cutoffMinutes}" style="width:90px" /></div>
+        <div class="field"><label>Linie pro Runde</label>
+          <select class="rc-mode" style="width:auto"><option value="bounce" ${r.lapMode === 'loop' ? '' : 'selected'}>2x kreuzen (hin/zurueck)</option>
+            <option value="loop" ${r.lapMode === 'loop' ? 'selected' : ''}>1x, gleiche Richtung (Rundkurs)</option></select></div>
         <button class="secondary rc-save">Speichern</button>
         <button class="secondary rc-geo" title="Setzt Linie und Kurs dieser Wettfahrt auf die aktuell gespeicherten Werte">Linie &amp; Kurs aktuell uebernehmen</button>
         ${r.hasLine ? '' : '<span class="warn-text">keine Linie gespeichert</span>'}
@@ -418,7 +472,7 @@
       });
       on('.start-clear', async () => { await api(`/api/admin/races/${id}/clear-start`, 'POST'); await load(); });
       on('.rc-save', async () => {
-        await api(`/api/admin/races/${id}`, 'PATCH', { laps: card.querySelector('.rc-laps').value, cutoffMinutes: card.querySelector('.rc-cutoff').value });
+        await api(`/api/admin/races/${id}`, 'PATCH', { laps: card.querySelector('.rc-laps').value, cutoffMinutes: card.querySelector('.rc-cutoff').value, lapMode: card.querySelector('.rc-mode').value });
         await load();
       });
       on('.rc-geo', async () => {

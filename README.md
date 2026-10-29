@@ -87,6 +87,21 @@ Kursseite der Linie.
   Aus einem Bild geschaetzte Positionen sind dafuer zu ungenau - besser echte Koordinaten oder eine GPX-Datei.
 - **"Erkannte Bojen uebernehmen"** setzt die aus den Logs gefundenen Positionen als exakte Koordinaten (zum Nachpruefen und Korrigieren).
 
+**Tor (zwei Marken):** Neben einzelnen Bojen kann der Kurs Tore enthalten (zwei Koordinaten A und B; in der Sammel-Eingabe `A | B`).
+Gezaehlt wird die Durchfahrt: die erste Kreuzung der Verbindungslinie A-B von der Anfahrtsseite her (Seite des vorherigen Kurspunkts) zwischen
+den Marken, mit 15 m Toleranz fuer GPS-Fehler. Fuer den Fortschritt gilt die Mitte des Tores; Tore werden nie aus den Logs verschoben.
+Der Kurs steht **einmal** fuer eine Runde; die Wettfahrt faehrt ihn so oft ab, wie Runden eingestellt sind (Standard 2).
+
+**Wichtig - Start, Ziel und Runden haengen nur an der Linie**, nicht an den Bojen: Die offizielle Zeit (Start, Ende der letzten Runde) wird
+ausschliesslich aus den Durchgaengen durch die Start-/Ziellinie bestimmt. Bojen und Tore beeinflussen nur die Live-Rangliste (Schaetzung);
+eine nicht erkannte Boje aendert das Ergebnis nicht. Wie die Linie pro Runde gezaehlt wird, stellst du pro Wettfahrt ein:
+- **2x kreuzen (Standard):** Start = Durchgang auf die Kursseite, Ende einer Runde = Durchgang zurueck. Die naechste Runde beginnt wieder mit
+  einem Durchgang auf die Kursseite. Das Ziel = Ende der letzten Runde.
+- **1x kreuzen, gleiche Richtung (Rundkurs):** Jede Runde fuehrt in derselben Richtung durch die Linie. Der erste Durchgang ist der Start, jeder
+  weitere beendet eine Runde (bei 2 Runden also der 3. Durchgang). Die Referenz-Tonne muss auf der Seite liegen, in die die Boote durch die Linie fahren.
+- GPS-Zittern direkt nach einem Durchgang zaehlt nicht (Mindestrundenzeit). Faellt eine Runde aus, nennt die Warnung den Grund, z.B. "Durchgang
+  ausserhalb der Linien-Marken (nur 20 m daneben) - Linie zu kurz?". Einzelne Zeiten und Status lassen sich im Ergebnis von Hand korrigieren.
+
 Der Kurs wird beim Anlegen/Starten einer Wettfahrt in diese kopiert; fuer bestehende Wettfahrten "Linie & Kurs aktuell uebernehmen".
 
 **Live-Rangliste** (`/live.html`, aktualisiert sich alle 5 s): Fortschritt = Strecke entlang Linie -> Bojen -> Linie (je Runde).

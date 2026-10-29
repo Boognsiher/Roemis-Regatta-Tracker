@@ -76,3 +76,60 @@ test('Ranking nach berechneter Zeit, Gleichstand', () => {
   T.rankEntries(e);
   assert.deepStrictEqual(e.map((x) => x.rank), [1, 1, 1, null]);
 });
+
+// ---- Rundkurs: Linie wird jede Runde in DIESELBE Richtung gekreuzt ----
+function pathFixes(path, v, gunTs, until, jitter = []) {
+  const seg = [];
+  let total = 0;
+  for (let i = 1; i < path.length; i += 1) { const d = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]); seg.push(d); total += d; }
+  const out = [];
+  for (let t = -30; t <= until; t += 1) {
+    let dd = Math.max(0, Math.min(total, t * v));
+    let i = 0;
+    while (i < seg.length - 1 && dd > seg[i]) { dd -= seg[i]; i += 1; }
+    const f = seg[i] ? dd / seg[i] : 0;
+    out.push({ ...pt(path[i][0] + (path[i + 1][0] - path[i][0]) * f, path[i][1] + (path[i + 1][1] - path[i][1]) * f), ts: gunTs + t * 1000 });
+  }
+  return out.concat(jitter);
+}
+const LOOP = [[0, -100], [0, 600], [300, 600], [300, -100], [0, -100], [0, 600], [300, 600], [300, -100], [0, -100], [0, 300]];
+
+test('Rundkurs (loop): Start = 1. Durchgang, Runde 1 = 2., Ziel nach Runde 2 = 3. Durchgang; Rueckweg ausserhalb der Linie stoert nicht', () => {
+  const fixes = pathFixes(LOOP, 4, 100000, 1200);
+  const r = T.analyzeBoat(pl, fixes, { startTs: 100000, laps: 2, minLapSeconds: 60, lapMode: 'loop' });
+  assert.strictEqual(r.status, 'FIN');
+  assert.strictEqual(r.laps.length, 2);
+  // Rechteck 700 + 300 + 700 + 300 = 2000 m je Runde bei 4 m/s = 500 s; Start-Durchgang bei y=0 -> t=25 s
+  assert.ok(Math.abs(r.laps[0].ts - (100000 + 525000)) < 2000, String(r.laps[0].ts - 100000));
+  assert.ok(Math.abs(r.laps[1].ts - (100000 + 1025000)) < 2000, String(r.laps[1].ts - 100000));
+  assert.ok(Math.abs(r.elapsedSec - 1025) < 3);
+});
+
+test('Rundkurs-Daten im Modus "bounce": keine Runden, aber verstaendliche Warnung zu Durchgaengen ausserhalb der Marken', () => {
+  const fixes = pathFixes(LOOP, 4, 100000, 1200);
+  const r = T.analyzeBoat(pl, fixes, { startTs: 100000, laps: 2, minLapSeconds: 60 });
+  assert.strictEqual(r.status, 'DNF');
+  assert.strictEqual(r.laps.length, 0);
+  assert.ok(r.warnings.some((w) => /ausserhalb der Linien-Marken/.test(w)), r.warnings.join(' | '));
+});
+
+test('Rundkurs: GPS-Zittern direkt nach einem Durchgang erzeugt keine zusaetzliche Runde', () => {
+  const dither = [];
+  // kurz nach dem Durchgang von Runde 1 (t = 525 s) zittert das Boot noch dreimal ueber die Linie
+  for (const [dt, y] of [[527, -3], [529, 3], [531, -3], [533, 3], [535, 20]]) dither.push({ ...pt(0, y), ts: 100000 + dt * 1000 });
+  const base = pathFixes(LOOP, 4, 100000, 1200).filter((f) => f.ts < 100000 + 526000 || f.ts > 100000 + 536000);
+  const r = T.analyzeBoat(pl, base.concat(dither), { startTs: 100000, laps: 2, minLapSeconds: 60, lapMode: 'loop' });
+  assert.strictEqual(r.status, 'FIN');
+  assert.strictEqual(r.laps.length, 2);
+  assert.ok(Math.abs(r.laps[1].ts - (100000 + 1025000)) < 3000);
+});
+
+test('Zu kurze Linie: Boot kreuzt knapp ausserhalb der Marken -> Warnung nennt den Abstand', () => {
+  // Linie nur 20 m lang (x -10..10), Boot faehrt bei x = 30 hin und her
+  const shortLine = T.prepareLine({ a: pt(-10, 0), b: pt(10, 0), mark: pt(0, 400) });
+  const path = [[30, -100], [30, 300], [30, -100]];
+  const fixes = pathFixes(path, 4, 100000, 220);
+  const r = T.analyzeBoat(shortLine, fixes, { startTs: 100000, laps: 1, minLapSeconds: 30 });
+  assert.strictEqual(r.status, 'DNF');
+  assert.ok(r.warnings.some((w) => /nur 20 m daneben/.test(w)), r.warnings.join(' | '));
+});

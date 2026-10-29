@@ -66,8 +66,13 @@
           <button id="course-coord-add" class="secondary">Hinzufuegen</button>
           <button id="course-add" class="secondary">Boje auf Karte setzen</button>
         </div>
+        <div class="row">
+          <div class="field" style="flex:1;min-width:200px"><label for="gate-a">Tor (zwei Marken, Durchfahrt zaehlt): Marke A</label><input type="text" id="gate-a" placeholder="46.8419, 10.5130" /></div>
+          <div class="field" style="flex:1;min-width:200px"><label for="gate-b">Marke B</label><input type="text" id="gate-b" placeholder="46.8421, 10.5140" /></div>
+          <button id="gate-add" class="secondary">Tor hinzufuegen</button>
+        </div>
         <details style="margin-bottom:0.6rem"><summary class="hint" style="cursor:pointer">Mehrere Koordinaten auf einmal einfuegen</summary>
-          <textarea id="course-bulk" placeholder="eine Boje pro Zeile, in Fahrtreihenfolge&#10;46.8419, 10.5130&#10;46.8300, 10.5200"></textarea>
+          <textarea id="course-bulk" placeholder="eine Boje pro Zeile, in Fahrtreihenfolge (Tor: zwei Koordinaten mit | getrennt)&#10;46.8419, 10.5130&#10;46.8300, 10.5200 | 46.8302, 10.5210"></textarea>
           <button id="course-bulk-btn" class="secondary" style="margin-top:0.4rem">Uebernehmen (ersetzt die Liste)</button>
         </details>
         <div class="row">
@@ -94,6 +99,11 @@
           <div class="field"><label for="race-laps">Runden</label><input type="number" id="race-laps" value="2" min="1" max="10" style="width:80px" /></div>
           <div class="field"><label for="race-start">Startzeit (optional, sekundengenau)</label><input type="datetime-local" step="1" id="race-start" /></div>
           <div class="field"><label for="race-cutoff">Zielschluss (Min.)</label><input type="number" id="race-cutoff" value="180" min="10" max="1440" style="width:90px" /></div>
+          <div class="field"><label for="race-mode">Linie pro Runde</label>
+            <select id="race-mode" style="width:auto">
+              <option value="bounce">2x kreuzen (hin = Start, zurueck = Ende der Runde)</option>
+              <option value="loop">1x kreuzen, immer gleiche Richtung (Rundkurs)</option>
+            </select></div>
           <button id="race-create">Wettfahrt anlegen</button>
         </div>
         <p id="race-error" class="error-msg" style="display:none"></p>

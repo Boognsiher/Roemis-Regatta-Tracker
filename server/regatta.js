@@ -139,12 +139,14 @@ function setLine(line) {
  */
 function setCourse(marks, radiusM, exact) {
   if (marks === null) { state.course = null; save(); return null; }
-  if (!Array.isArray(marks) || marks.length < 1 || marks.length > 20 || !marks.every(isPoint)) {
-    throw httpError(400, 'Kurs braucht 1-20 Punkte (je lat/lon)');
+  // Eintrag = einzelne Boje {lat, lon} oder Tor {a: {lat, lon}, b: {lat, lon}} (zwei Marken, Durchfahrt zaehlt)
+  const isGate = (m) => m && isPoint(m.a) && isPoint(m.b);
+  if (!Array.isArray(marks) || marks.length < 1 || marks.length > 20 || !marks.every((m) => isPoint(m) || isGate(m))) {
+    throw httpError(400, 'Kurs braucht 1-20 Eintraege (Boje: lat/lon, Tor: a und b mit lat/lon)');
   }
   const r = Number.isFinite(radiusM) ? Math.min(1000, Math.max(30, radiusM)) : 250;
   // exact: Positionen sind von der Wettfahrtleitung eingegeben (genau) und werden NICHT aus den Logs verfeinert
-  state.course = { marks: marks.map(point), radiusM: r, exact: !!exact };
+  state.course = { marks: marks.map((m) => (isGate(m) ? { a: point(m.a), b: point(m.b) } : point(m))), radiusM: r, exact: !!exact };
   save();
   return state.course;
 }
@@ -165,13 +167,14 @@ const clone = (o) => (o ? JSON.parse(JSON.stringify(o)) : null);
 const parseCutoff = (v, fallback) => Math.min(24 * 60, Math.max(10, parseInt(v, 10) || fallback));
 
 /** Wettfahrt anlegen. Mit startTs (auch in der Vergangenheit) wird sie sofort aus den vorhandenen Aufzeichnungen gewertet. */
-function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs }) {
+function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode }) {
   const race = {
     id: genId(),
     name: String(name || `Wettfahrt ${state.races.length + 1}`).trim().slice(0, 60),
     laps: Math.max(1, Math.min(10, parseInt(laps, 10) || 2)),
     minLapSeconds: Math.max(10, parseInt(minLapSeconds, 10) || 120),
     cutoffMinutes: parseCutoff(cutoffMinutes, 180),
+    lapMode: lapMode === 'loop' ? 'loop' : 'bounce',
     startTs: null,
     line: clone(state.line),
     course: clone(state.course),
@@ -210,6 +213,7 @@ function updateRace(id, patch) {
   if (patch.name != null) race.name = String(patch.name).trim().slice(0, 60) || race.name;
   if (patch.laps != null) race.laps = Math.max(1, Math.min(10, parseInt(patch.laps, 10) || race.laps));
   if (patch.minLapSeconds != null) race.minLapSeconds = Math.max(10, parseInt(patch.minLapSeconds, 10) || race.minLapSeconds);
+  if (patch.lapMode != null) race.lapMode = patch.lapMode === 'loop' ? 'loop' : 'bounce';
   if (patch.cutoffMinutes != null) race.cutoffMinutes = parseCutoff(patch.cutoffMinutes, race.cutoffMinutes || 180);
   save();
   return race;
@@ -371,7 +375,7 @@ function publicState() {
     course: state.course,
     races: state.races.map((r) => ({
       id: r.id, name: r.name, laps: r.laps, minLapSeconds: r.minLapSeconds, cutoffMinutes: r.cutoffMinutes || 180,
-      startTs: r.startTs, official: r.official, overrides: r.overrides, hasLine: !!r.line, hasCourse: !!r.course
+      lapMode: r.lapMode || 'bounce', startTs: r.startTs, official: r.official, overrides: r.overrides, hasLine: !!r.line, hasCourse: !!r.course
     }))
   };
 }
@@ -401,7 +405,7 @@ function computeLive(race, now = Date.now()) {
   }
   const ranking = courseLib.liveRanking({
     line: race.line,
-    race: { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: raceEnd(race) },
+    race: { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: raceEnd(race), lapMode: race.lapMode || 'bounce' },
     approxMarks: race.course ? race.course.marks : [],
     boats,
     now,
@@ -458,7 +462,12 @@ function exportSelection({ race, from, to, trackers }) {
   if (geo.line) {
     waypoints.push({ lat: geo.line.a.lat, lon: geo.line.a.lon, name: 'Linie A' }, { lat: geo.line.b.lat, lon: geo.line.b.lon, name: 'Linie B' });
   }
-  if (geo.course) geo.course.marks.forEach((m, i) => waypoints.push({ lat: m.lat, lon: m.lon, name: `Boje ${i + 1} (grob)` }));
+  if (geo.course) {
+    geo.course.marks.forEach((m, i) => {
+      if (m.a) waypoints.push({ lat: m.a.lat, lon: m.a.lon, name: `Tor ${i + 1} A` }, { lat: m.b.lat, lon: m.b.lon, name: `Tor ${i + 1} B` });
+      else waypoints.push({ lat: m.lat, lon: m.lon, name: `Boje ${i + 1}${geo.course.exact ? '' : ' (grob)'}` });
+    });
+  }
   const ids = trackers ? String(trackers).split(',').filter(Boolean) : store.listTrackers().map((x) => x.id);
   const entries = [];
   for (const id of ids) {

@@ -168,3 +168,62 @@ test('exakte Bojenpositionen werden nicht aus den Logs veraendert', () => {
   assert.deepStrictEqual(live.entries.map((e) => e.trackerId), ['A', 'C', 'B']);
   assert.ok(live.marks.every((m) => m.exact));
 });
+
+// ---- Tor (zwei Marken, Durchfahrt zaehlt) ----
+const G_MID = { x: 150, y: 137 };                       // Mitte der Strecke B -> S
+const G_PERP = { x: 0.735, y: -0.678 };                 // senkrecht dazu
+const gateLL = (halfWidth) => ({
+  a: pt(G_MID.x - G_PERP.x * halfWidth, G_MID.y - G_PERP.y * halfWidth),
+  b: pt(G_MID.x + G_PERP.x * halfWidth, G_MID.y + G_PERP.y * halfWidth)
+});
+
+test('gateCrossing: richtige Richtung, zwischen den Marken, mit Toleranz', () => {
+  const gate = { ax: -40, ay: 0, bx: 40, by: 0 };
+  const approach = { x: 0, y: -100 };                    // Anfahrt von Sued
+  const run = (xs, ys) => xs.map((x, i) => ({ t: i * 1000, x, y: ys[i] }));
+  const north = run([0, 0, 0, 0], [-30, -10, 10, 30]);  // von Sued nach Nord durch die Mitte
+  assert.ok(course.gateCrossing(north, gate, 0, 0, Infinity, approach));
+  const south = run([0, 0, 0, 0], [30, 10, -10, -30]);  // falsche Richtung
+  assert.strictEqual(course.gateCrossing(south, gate, 0, 0, Infinity, approach), null);
+  const outside = run([-90, -90, -90, -90], [-30, -10, 10, 30]);   // links ausserhalb des Tores
+  assert.strictEqual(course.gateCrossing(outside, gate, 0, 0, Infinity, approach), null);
+  const edge = run([-48, -48, -48, -48], [-30, -10, 10, 30]);      // 8 m ausserhalb: innerhalb der GPS-Toleranz
+  assert.ok(course.gateCrossing(edge, gate, 0, 0, Infinity, approach));
+  const g = course.gateCrossing(north, gate, 0, 0, Infinity, approach);
+  assert.ok(Math.abs(g.t - 1500) < 1 && Math.abs(g.y) < 0.01);     // interpolierte Zeit, auf der Linie
+});
+
+test('Kurs mit Boje UND Tor: zwei Runden, Rundungen/Tor-Durchfahrten erkannt, Ergebnis wie ohne Bojen', () => {
+  const gate = gateLL(40);
+  const approxMarks = [pt(A.x + 30, A.y - 30), gate];
+  const boats = boatsAt(2000);
+  const pl = timing.prepareLine(line);
+  const det = course.detectCourse({ pl, race, boatsFixes: boats.map((b) => b.fixes), approxMarks });
+  assert.ok(det.marks[1].gate && det.marks[1].exact);               // Tor bleibt unveraendert
+  assert.ok(Math.hypot(back(det.marks[0]).x - A.x, back(det.marks[0]).y - A.y) < 15);   // einzelne Boje wird verfeinert
+  // pro Boot und Runde je 2 Ereignisse (Boje, Tor)
+  det.perBoat.forEach((b) => b.roundings.forEach((lap) => assert.strictEqual(lap.length, 2, JSON.stringify(lap.map((e) => e.k)))));
+  const live = course.liveRanking({ line, race, approxMarks, boats, now: gun + 1500 * 1000 });
+  assert.ok(live.entries.every((e) => e.status === 'FIN'));
+  assert.deepStrictEqual(live.entries.map((e) => e.trackerId), ['A', 'C', 'B']);
+  // Mitten im Rennen: Fortschritt nimmt ueber Boje und Tor hinweg weiter zu
+  let prev = -1;
+  for (const sec of [60, 150, 250, 350, 450, 550]) {
+    const now = gun + sec * 1000;
+    const b = { trackerId: 'A', name: 'A', yardstick: 100, fixes: simulate({ v: 4, laps: 2, until: sec, seed: 1 }) };
+    const e = course.liveRanking({ line, race, approxMarks, boats: [b], now }).entries[0];
+    assert.ok(e.progressM >= prev - 15, `t=${sec}: ${e.progressM} < ${prev}`);
+    prev = e.progressM;
+  }
+});
+
+test('Boot faehrt AUSSEN am Tor vorbei: Tor wird nicht gezaehlt, aber die Runden (Linie) zaehlen trotzdem', () => {
+  const narrow = gateLL(8);                                         // sehr enges Tor, Boot faehrt mittig vorbei?  -> breite Verschiebung unten
+  const shifted = { a: pt(G_MID.x + 120 - G_PERP.x * 8, G_MID.y - 120 * 0 - G_PERP.y * 8), b: pt(G_MID.x + 120 + G_PERP.x * 8, G_MID.y + G_PERP.y * 8) };
+  const boats = boatsAt(1500);
+  const pl = timing.prepareLine(line);
+  const det = course.detectCourse({ pl, race, boatsFixes: boats.map((b) => b.fixes), approxMarks: [pt(A.x, A.y), shifted] });
+  assert.ok(det.perBoat.every((b) => b.roundings.every((lap) => lap.length === 1)));   // nur die Boje, Tor verfehlt
+  assert.ok(det.perBoat.every((b) => b.analysis.status === 'FIN'));                    // Wertung haengt nicht von den Marken ab
+  void narrow;
+});
