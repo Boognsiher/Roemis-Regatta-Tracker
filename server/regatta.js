@@ -167,7 +167,7 @@ const clone = (o) => (o ? JSON.parse(JSON.stringify(o)) : null);
 const parseCutoff = (v, fallback) => Math.min(24 * 60, Math.max(10, parseInt(v, 10) || fallback));
 
 /** Wettfahrt anlegen. Mit startTs (auch in der Vergangenheit) wird sie sofort aus den vorhandenen Aufzeichnungen gewertet. */
-function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode }) {
+function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode, startOnExtension }) {
   const race = {
     id: genId(),
     name: String(name || `Wettfahrt ${state.races.length + 1}`).trim().slice(0, 60),
@@ -175,6 +175,7 @@ function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode
     minLapSeconds: Math.max(10, parseInt(minLapSeconds, 10) || 120),
     cutoffMinutes: parseCutoff(cutoffMinutes, 180),
     lapMode: lapMode === 'loop' ? 'loop' : 'bounce',
+    startOnExtension: startOnExtension !== false && startOnExtension !== 'false',
     startTs: null,
     line: clone(state.line),
     course: clone(state.course),
@@ -213,6 +214,7 @@ function updateRace(id, patch) {
   if (patch.name != null) race.name = String(patch.name).trim().slice(0, 60) || race.name;
   if (patch.laps != null) race.laps = Math.max(1, Math.min(10, parseInt(patch.laps, 10) || race.laps));
   if (patch.minLapSeconds != null) race.minLapSeconds = Math.max(10, parseInt(patch.minLapSeconds, 10) || race.minLapSeconds);
+  if (patch.startOnExtension != null) race.startOnExtension = patch.startOnExtension !== false && patch.startOnExtension !== 'false';
   if (patch.lapMode != null) race.lapMode = patch.lapMode === 'loop' ? 'loop' : 'bounce';
   if (patch.cutoffMinutes != null) race.cutoffMinutes = parseCutoff(patch.cutoffMinutes, race.cutoffMinutes || 180);
   save();
@@ -375,7 +377,7 @@ function publicState() {
     course: state.course,
     races: state.races.map((r) => ({
       id: r.id, name: r.name, laps: r.laps, minLapSeconds: r.minLapSeconds, cutoffMinutes: r.cutoffMinutes || 180,
-      lapMode: r.lapMode || 'bounce', startTs: r.startTs, official: r.official, overrides: r.overrides, hasLine: !!r.line, hasCourse: !!r.course
+      lapMode: r.lapMode || 'bounce', startOnExtension: r.startOnExtension !== false, startTs: r.startTs, official: r.official, overrides: r.overrides, hasLine: !!r.line, hasCourse: !!r.course
     }))
   };
 }
@@ -405,7 +407,7 @@ function computeLive(race, now = Date.now()) {
   }
   const ranking = courseLib.liveRanking({
     line: race.line,
-    race: { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: raceEnd(race), lapMode: race.lapMode || 'bounce' },
+    race: { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: raceEnd(race), lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension !== false },
     approxMarks: race.course ? race.course.marks : [],
     boats,
     now,

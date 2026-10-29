@@ -135,7 +135,7 @@ function detectRoundings(pts, marks, tFrom, tTo, radiusM, o, mid) {
 /** Auswertung eines Boots gegen die Bojen: Runden (Linie) und Rundungen je Runde. */
 function analyzeBoatCourse({ pl, fixes, race, marksXY, radiusM, o }) {
   const norm = timing.normalizeFixes(fixes);
-  const analysis = timing.analyzeBoat(pl, norm, { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: race.endTs ?? null, lapMode: race.lapMode || 'bounce' });
+  const analysis = timing.analyzeBoat(pl, norm, { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: race.endTs ?? null, lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension !== false });
   const pts = toXY(pl, norm);
   const lastT = pts.length ? pts[pts.length - 1].t : race.startTs;
   const mid = { x: pl.a.x + pl.dx / 2, y: pl.a.y + pl.dy / 2 };

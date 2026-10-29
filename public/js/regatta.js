@@ -373,7 +373,7 @@
   $('race-create').addEventListener('click', guard(async () => {
     const startTs = fromLocalInput($('race-start').value);
     await api('/api/admin/races', 'POST', {
-      name: $('race-name').value, laps: $('race-laps').value, cutoffMinutes: $('race-cutoff').value, lapMode: $('race-mode').value, startTs: startTs || undefined
+      name: $('race-name').value, laps: $('race-laps').value, cutoffMinutes: $('race-cutoff').value, lapMode: $('race-mode').value, startOnExtension: $('race-ext').checked, startTs: startTs || undefined
     });
     $('race-name').value = '';
     $('race-start').value = '';
@@ -409,6 +409,7 @@
         <div class="field"><label>Linie pro Runde</label>
           <select class="rc-mode" style="width:auto"><option value="bounce" ${r.lapMode === 'loop' ? '' : 'selected'}>2x kreuzen (hin/zurueck)</option>
             <option value="loop" ${r.lapMode === 'loop' ? 'selected' : ''}>1x, gleiche Richtung (Rundkurs)</option></select></div>
+        <label style="margin:0"><input type="checkbox" class="rc-ext" ${r.startOnExtension === false ? '' : 'checked'} /> Start auch in der Verlaengerung der Linie</label>
         <button class="secondary rc-save">Speichern</button>
         <button class="secondary rc-geo" title="Setzt Linie und Kurs dieser Wettfahrt auf die aktuell gespeicherten Werte">Linie &amp; Kurs aktuell uebernehmen</button>
         ${r.hasLine ? '' : '<span class="warn-text">keine Linie gespeichert</span>'}
@@ -472,7 +473,7 @@
       });
       on('.start-clear', async () => { await api(`/api/admin/races/${id}/clear-start`, 'POST'); await load(); });
       on('.rc-save', async () => {
-        await api(`/api/admin/races/${id}`, 'PATCH', { laps: card.querySelector('.rc-laps').value, cutoffMinutes: card.querySelector('.rc-cutoff').value, lapMode: card.querySelector('.rc-mode').value });
+        await api(`/api/admin/races/${id}`, 'PATCH', { laps: card.querySelector('.rc-laps').value, cutoffMinutes: card.querySelector('.rc-cutoff').value, lapMode: card.querySelector('.rc-mode').value, startOnExtension: card.querySelector('.rc-ext').checked });
         await load();
       });
       on('.rc-geo', async () => {

@@ -66,7 +66,14 @@ function sideOf(pl, p) {
  * Rueckgabe: [{ ts, dir: 'start'|'finish', uncertaintyMs }] sortiert nach ts.
  * 'start'  = Vorstartseite -> Kursseite, 'finish' = Kursseite -> Vorstartseite.
  */
-function findCrossings(pl, fixes, outside = null) {
+/**
+ * Findet alle Durchgaenge durch die Linie in einer nach Zeit sortierten Fix-Liste.
+ *  - 'finish' (Kursseite -> Vorstartseite) zaehlt nur zwischen den Marken (GPS-Toleranz finishTolM an beiden Enden).
+ *  - 'start'  (Vorstartseite -> Kursseite) zaehlt zwischen den Marken und, wenn startExtensionM > 0, auch in der Verlaengerung
+ *    der Linie bis zu dieser Entfernung hinter den Marken (Start darf in der Verlaengerung der Linie erfolgen).
+ * Durchgaenge, die nicht zaehlen, kommen (falls angegeben) mit dem Abstand zur naechsten Marke in "outside".
+ */
+function findCrossings(pl, fixes, outside = null, { startExtensionM = 0, finishTolM = 3 } = {}) {
   const out = [];
   let prev = null;
   let prevSide = 0;
@@ -81,14 +88,20 @@ function findCrossings(pl, fixes, outside = null) {
       const hx = p0.x + u * (p1.x - p0.x) - pl.a.x;
       const hy = p0.y + u * (p1.y - p0.y) - pl.a.y;
       const along = (hx * pl.dx + hy * pl.dy) / (pl.len * pl.len); // 0..1 = zwischen a und b
-      if (along >= 0 && along <= 1) {
+      const dir = side === 1 ? 'start' : 'finish';
+      const missM = along < 0 ? -along * pl.len : (along > 1 ? (along - 1) * pl.len : 0);   // Abstand ausserhalb der Marken
+      const ok = missM === 0
+        || (dir === 'finish' && missM <= finishTolM)
+        || (dir === 'start' && missM <= Math.max(startExtensionM, finishTolM));
+      if (ok) {
         out.push({
           ts: prev.ts + u * (f.ts - prev.ts),
-          dir: side === 1 ? 'start' : 'finish',
-          uncertaintyMs: f.ts - prev.ts
+          dir,
+          uncertaintyMs: f.ts - prev.ts,
+          onExtension: missM > finishTolM
         });
       } else if (outside) {
-        outside.push({ ts: prev.ts + u * (f.ts - prev.ts), meters: along < 0 ? -along * pl.len : (along - 1) * pl.len });
+        outside.push({ ts: prev.ts + u * (f.ts - prev.ts), meters: missM, dir });
       }
     }
     if (side !== 0) prevSide = side;
@@ -127,7 +140,9 @@ function normalizeFixes(fixes) {
  * Rueckgabe: { status: 'FIN'|'DNF'|'DNS', laps:[{n,ts,lapSeconds}], finishTs, elapsedSec,
  *              uncertaintyMs, warnings:[] }
  */
-function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null, lapMode = 'bounce' }) {
+const START_EXTENSION_MAX_M = 400;   // so weit hinter den Marken darf ein Start in der Verlaengerung der Linie liegen
+
+function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null, lapMode = 'bounce', startOnExtension = true }) {
   const warnings = [];
   const fixes = normalizeFixes(fixesRaw);
   if (!fixes.length || fixes[fixes.length - 1].ts < startTs) {
@@ -136,7 +151,8 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
 
   // Zielschluss: Durchgaenge nach endTs zaehlen nicht (z.B. wenn danach die naechste Wettfahrt gesegelt wurde)
   const outside = [];
-  const crossings = findCrossings(pl, fixes, outside).filter((c) => endTs == null || c.ts <= endTs);
+  const startExtensionM = lapMode === 'bounce' && startOnExtension ? START_EXTENSION_MAX_M : 0;
+  const crossings = findCrossings(pl, fixes, outside, { startExtensionM }).filter((c) => endTs == null || c.ts <= endTs);
   const atGun = positionAt(fixes, startTs);
   const sideAtGun = atGun ? sideOf(pl, atGun) : -1;
 
@@ -189,7 +205,8 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
     const extra = [`Nur ${laps.length} von ${totalLaps} Runden erkannt`];
     if (out.length) {
       const nearest = Math.min(...out.map((o) => o.meters));
-      extra.push(`${out.length} Durchgang/Durchgaenge ausserhalb der Linien-Marken (nur ${Math.round(nearest)} m daneben) - Linie zu kurz oder Boot ausserhalb der Marken?`);
+      const nFinish = out.filter((o) => o.dir === 'finish').length;
+      extra.push(`${out.length} Durchgang/Durchgaenge ausserhalb der Linien-Marken (nur ${Math.round(nearest)} m daneben${nFinish ? `, davon ${nFinish} beim Zieldurchgang, der zwischen den Marken liegen muss` : ''}) - Linie zu kurz oder Boot ausserhalb der Marken?`);
     }
     return { status: 'DNF', laps, finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: warnings.concat(extra) };
   }
