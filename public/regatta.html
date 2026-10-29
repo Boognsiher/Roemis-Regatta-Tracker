@@ -43,24 +43,61 @@
       </div>
 
       <div class="card">
-        <h2 style="margin-top:0">3. Start-/Ziellinie</h2>
+        <h2 style="margin-top:0">3. Start-/Ziellinie und Kurs</h2>
         <p class="hint">Start und Ziel sind dieselbe Linie. Punkt waehlen und auf die Karte klicken, oder die
           Position eines Trackers uebernehmen (z.B. Startschiff und Pin-Boot). Die Referenz-Tonne (z.B.
           Luv-Tonne) legt die Kursseite fest.</p>
         <div id="line-map"></div>
         <div id="line-controls"></div>
         <div class="row"><button id="line-save">Linie speichern</button><span id="line-msg" class="hint"></span></div>
+
+        <h3 style="margin-bottom:0.3rem">Kurs (Bojen) - fuer die Live-Rangliste</h3>
+        <p class="hint">Zeichne eine <b>grobe Strecke fuer eine Runde</b>: die Bojen in Fahrtreihenfolge (ohne Start/Ziel-Linie).
+          Die genauen Bojenpositionen findet das System selbst aus den Aufzeichnungen der Boote (Wendepunkte); die Punkte dienen nur
+          dazu, die Bojen zu finden. Sie duerfen etwas daneben liegen (unter ca. 100 m), sollten aber mindestens ca. 300 m auseinander sein.</p>
+        <div id="course-list" class="hint"></div>
+        <div class="row">
+          <button id="course-add" class="secondary">Boje auf Karte setzen</button>
+          <button id="course-undo" class="secondary">Letzten Punkt entfernen</button>
+          <button id="course-clear" class="secondary">Alle entfernen</button>
+          <div class="field"><label for="course-radius">Suchradius (m)</label><input type="number" id="course-radius" value="250" min="30" max="1000" style="width:90px" /></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="course-file">Strecke importieren (GPX oder GeoJSON)</label><input type="file" id="course-file" accept=".gpx,.geojson,.json,application/gpx+xml,application/json" /></div>
+          <label style="margin:0"><input type="checkbox" id="course-trim" checked /> Start und Ende der Strecke liegen an der Linie (erster/letzter Punkt weglassen)</label>
+        </div>
+        <div class="row"><button id="course-save">Kurs speichern</button><span id="course-msg" class="hint"></span></div>
       </div>
 
       <div class="card">
         <h2 style="margin-top:0">4. Wettfahrten</h2>
+        <p class="hint">Neue Wettfahrt anlegen. <b>Nachtraeglich:</b> Startzeit eintragen - dann wird die Wettfahrt sofort aus den
+          vorhandenen Aufzeichnungen ausgewertet (Linie und Kurs gelten wie aktuell gespeichert). Ohne Startzeit startest du sie spaeter
+          per Startsignal.</p>
         <div class="row">
           <div class="field"><label for="race-name">Name</label><input type="text" id="race-name" placeholder="Wettfahrt 1" /></div>
           <div class="field"><label for="race-laps">Runden</label><input type="number" id="race-laps" value="2" min="1" max="10" style="width:80px" /></div>
+          <div class="field"><label for="race-start">Startzeit (optional, sekundengenau)</label><input type="datetime-local" step="1" id="race-start" /></div>
+          <div class="field"><label for="race-cutoff">Zielschluss (Min.)</label><input type="number" id="race-cutoff" value="180" min="10" max="1440" style="width:90px" /></div>
           <button id="race-create">Wettfahrt anlegen</button>
         </div>
         <p id="race-error" class="error-msg" style="display:none"></p>
         <div id="races"></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">5. Aufzeichnungen und Export</h2>
+        <p class="hint">Alle empfangenen Positionen werden dauerhaft gespeichert. Hier siehst du, welche Zeitraeume vorhanden sind, und
+          kannst sie als CSV (Excel) oder GPX (Karten-Apps) herunterladen. Fuer eine einzelne Wettfahrt gibt es die Links in der
+          Wettfahrt-Karte.</p>
+        <div id="history"></div>
+        <div class="row" style="margin-top:0.6rem">
+          <div class="field"><label for="ex-from">Von</label><input type="datetime-local" step="1" id="ex-from" /></div>
+          <div class="field"><label for="ex-to">Bis</label><input type="datetime-local" step="1" id="ex-to" /></div>
+          <a id="ex-csv" class="badge" href="#" style="padding:0.5rem 0.9rem">CSV herunterladen</a>
+          <a id="ex-gpx" class="badge" href="#" style="padding:0.5rem 0.9rem">GPX herunterladen</a>
+        </div>
+        <p class="hint">Ohne Von/Bis wird alles exportiert.</p>
       </div>
     </div>
   </div>

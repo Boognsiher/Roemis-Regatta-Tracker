@@ -70,6 +70,31 @@ Ablauf:
 4. **Wettfahrt anlegen** (Rundenzahl, Standard 2) und **Startsignal** setzen ("JETZT" oder sekundengenau).
 5. Ergebnis erscheint laufend, ist **vorlaeufig**, bis die Wettfahrtleitung es **offiziell freigibt** (dann gesperrt).
 
+### Kurs, Live-Rangliste, nachtraegliche Wettfahrten und Export
+
+**Kurs (Bojen) zeichnen** (`/regatta.html`, Bereich 3): Auf der Karte die Bojen einer Runde **in Fahrtreihenfolge** anklicken (ohne
+Start/Ziel-Linie) oder eine Strecke als GPX/GeoJSON importieren (wird auf die Eckpunkte vereinfacht). Die Punkte muessen nur ungefaehr
+bei den Bojen liegen: Die genauen Positionen findet das System selbst aus den Aufzeichnungen (pro Boot der Punkt mit der staerksten
+Kursaenderung in der Naehe der gezeichneten Punkte, Median ueber alle Boote und Runden; auf der Karte blau). Es werden keine
+Wendewinkel verwendet. Hinweise: Gezeichnete Punkte sollten unter ca. 100 m von der Boje entfernt und mindestens ca. 300 m
+voneinander entfernt sein; sonst bleibt die gezeichnete Position stehen (die Rangliste funktioniert trotzdem, nur etwas ungenauer).
+Der Kurs wird beim Anlegen/Starten einer Wettfahrt in diese kopiert; fuer bestehende Wettfahrten "Linie & Kurs aktuell uebernehmen".
+
+**Live-Rangliste** (`/live.html`, aktualisiert sich alle 5 s): Fortschritt = Strecke entlang Linie -> Bojen -> Linie (je Runde).
+Rang nach geschaetzter berechneter Zeit = (verstrichene Zeit x Gesamtstrecke / Fortschritt) x 100 / Yardstick; nach dem Ziel zaehlt die
+gemessene Zeit. Rueckstand (korrigiert) bezieht sich auf das Boot mit der besten berechneten Zeit, "Abstand" auf das vorderste Boot
+(groesster Fortschritt). Das ist eine **Schaetzung** (nimmt konstantes Tempo an; Kreuzen/Vorwind schwanken) und erst nach ca. 3 % der
+Strecke bzw. 60 s sinnvoll. Offiziell ist nur das freigegebene Ergebnis.
+
+**Nachtraeglich eine Wettfahrt eintragen**: Bereich 4 "Wettfahrt anlegen" mit **Startzeit** (auch in der Vergangenheit) und Zielschluss
+(Minuten nach dem Start; Durchgaenge danach zaehlen nicht - wichtig, wenn mehrere Laeufe in derselben Aufzeichnung stehen). Die
+Wettfahrt wird sofort aus den gespeicherten Positionen ausgewertet. Aenderungen an Runden/Zielschluss/Boote/Yardstick rechnen alles neu.
+Bereich 5 zeigt, fuer welche Zeitraeume Aufzeichnungen vorhanden sind.
+
+**Export**: Positionen als CSV (Excel, ';') oder GPX (Karten-Apps) - ganze Historie, Zeitfenster (Von/Bis) oder eine Wettfahrt
+(Links in der Wettfahrt-Karte, inkl. Linie und Bojen als Wegpunkte). API (Admin): `/api/admin/export/tracks.csv|gpx?race=ID` oder
+`?from=...&to=...&trackers=id1,id2` (Zeit als ms oder ISO).
+
 Berechnung:
 
 - Gruppenstart: gesegelte Zeit = Zieldurchgang - Startsignal. Ein Boot startet mit dem Durchqueren der Linie

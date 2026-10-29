@@ -9,6 +9,7 @@ const path = require('path');
 const { customAlphabet } = require('nanoid');
 const store = require('./store');
 const timing = require('./timing');
+const courseLib = require('./course');
 
 const FILE = path.join(store.DATA_DIR, 'regatta.json');
 const genId = customAlphabet('23456789abcdefghjkmnpqrstuvwxyz', 6);
@@ -374,6 +375,60 @@ function publicState() {
   };
 }
 
+// ---------- Live-Rangliste ----------
+
+const LIVE_TTL_MS = 3000;
+const liveCache = new Map();
+
+/** Laeuft die Wettfahrt gerade (Start gesetzt, noch nicht Zielschluss, nicht offiziell abgeschlossen)? */
+function isRunning(race, now = Date.now()) {
+  return race.startTs != null && !race.official && now < raceEnd(race);
+}
+
+function computeLive(race, now = Date.now()) {
+  const boats = [];
+  const from = race.startTs - 15 * 60000;
+  for (const [trackerId, boat] of Object.entries(state.boats)) {
+    const tracker = store.getTracker(trackerId);
+    const cls = state.classes.find((c) => c.id === boat.classId);
+    if (!tracker || !cls) continue;
+    boats.push({
+      trackerId, name: tracker.name, sailNo: boat.sailNo, helm: boat.helm, className: cls.name, yardstick: cls.yardstick,
+      color: tracker.color,
+      fixes: store.readHistoryCached(trackerId).filter((f) => f.ts >= from && f.ts <= now)
+    });
+  }
+  const ranking = courseLib.liveRanking({
+    line: race.line,
+    race: { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: raceEnd(race) },
+    approxMarks: race.course ? race.course.marks : [],
+    boats,
+    now,
+    options: race.course && race.course.radiusM ? { radiusM: race.course.radiusM } : {}
+  });
+  const colors = Object.fromEntries(boats.map((b) => [b.trackerId, b.color]));
+  ranking.entries.forEach((e) => { e.color = colors[e.trackerId]; });
+  return {
+    race: { id: race.id, name: race.name, laps: race.laps, startTs: race.startTs, official: race.official, running: isRunning(race, now) },
+    ...ranking
+  };
+}
+
+/** Wie computeLive, aber hoechstens alle LIVE_TTL_MS neu berechnet (viele Zuschauer, gleiche Daten). */
+function getLive(id, now = Date.now()) {
+  const race = getRace(id);
+  if (race.startTs == null) throw httpError(400, 'Wettfahrt hat keinen Start');
+  const c = liveCache.get(id);
+  if (c && now - c.at < LIVE_TTL_MS) return c.data;
+  const data = computeLive(race, now);
+  liveCache.set(id, { at: now, data });
+  return data;
+}
+
+function runningRaces(now = Date.now()) {
+  return state.races.filter((r) => isRunning(r, now));
+}
+
 // ---------- Export ----------
 
 function parseTime(v) {
@@ -420,7 +475,7 @@ function exportSelection({ race, from, to, trackers }) {
 }
 
 module.exports = {
-  exportSelection,
+  exportSelection, computeLive, getLive, isRunning, runningRaces,
   flush, state, STATUS_CODES, httpError, publicState,
   setCourse, applyGeometry, raceEnd, windowFixes,
   addClass, importClasses, deleteClass, registerBoat, unregisterBoat, setLine,

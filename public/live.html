@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Regatta - Live-Rangliste</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="wide-wrap">
+    <p><a href="index.html" style="color:var(--muted)">← Live-Karte</a> ·
+       <a href="results.html" style="color:var(--muted)">Ergebnisse</a> ·
+       <button id="logout-btn" style="display:none;background:none;border:none;color:var(--muted);cursor:pointer;font-size:inherit">Abmelden</button></p>
+    <h1>Live-Rangliste</h1>
+    <div class="row">
+      <div class="field"><label for="race-select">Wettfahrt</label><select id="race-select" style="width:auto"></select></div>
+      <div><span id="clock" class="countdown">–</span></div>
+      <div id="state" class="hint"></div>
+    </div>
+    <div id="notice" class="hint"></div>
+    <div class="card" style="overflow-x:auto">
+      <table class="results" id="table">
+        <thead><tr>
+          <th>Rang</th><th>Boot</th><th>Klasse</th><th>Fortschritt</th><th>Berechnete Zeit</th>
+          <th>R&uuml;ckstand (korr.)</th><th>Abstand zum vordersten</th><th>Speed</th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="8" class="hint">Lade ...</td></tr></tbody>
+      </table>
+    </div>
+    <p class="hint">Die Rangliste ist eine <b>Sch&auml;tzung w&auml;hrend der Fahrt</b>: berechnete Zeit = (verstrichene Zeit &times;
+      Gesamtstrecke / bisheriger Fortschritt) &times; 100 / Yardstick. Fortschritt wird entlang des Kurses (Start/Ziel-Linie &rarr; Bojen &rarr;
+      Linie) aus den GPS-Positionen gemessen. Der R&uuml;ckstand bezieht sich auf das Boot mit der besten berechneten Zeit, der Abstand auf
+      das vorderste Boot. Nach dem Ziel z&auml;hlt die tats&auml;chlich gemessene Zeit; offiziell ist nur das freigegebene Ergebnis.</p>
+  </div>
+<script src="/js/live.js"></script>
+<script src="/js/logout.js"></script>
+</body>
+</html>

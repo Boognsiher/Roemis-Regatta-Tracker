@@ -49,7 +49,7 @@ app.use('/api/gateway', authGuard.middleware);
 
 // Seiten fuer Zuschauer nur mit Anmeldung (sonst Weiterleitung zur Login-Seite). Verwaltung, Gateway- und Tracker-Seiten
 // sind nicht betroffen: dort schuetzen Tokens die Daten.
-const VIEWER_PAGES = new Set(['/', '/index.html', '/results.html']);
+const VIEWER_PAGES = new Set(['/', '/index.html', '/results.html', '/live.html']);
 app.use((req, res, next) => {
   if (sessions.enabled && req.method === 'GET' && VIEWER_PAGES.has(req.path) && !sessions.fromRequest(req)) {
     return res.redirect(`/login.html?next=${encodeURIComponent(req.path === '/' ? '/index.html' : req.path)}`);
@@ -201,6 +201,7 @@ app.put('/api/trackers/:id/registration', authGuard.middleware, (req, res) => {
 // Oeffentlich: Klassen, Registrierungen, Linie, Wettfahrten.
 app.get('/api/regatta', requireViewer, (req, res) => res.json(regatta.publicState()));
 app.get('/api/races/:id/results', requireViewer, (req, res) => res.json(regatta.computeResults(regatta.getRace(req.params.id))));
+app.get('/api/races/:id/live', requireViewer, (req, res) => res.json(regatta.getLive(req.params.id)));
 app.get('/api/races/:id/results.csv', requireViewer, (req, res) => {
   const race = regatta.getRace(req.params.id);
   res.set('Content-Type', 'text/csv; charset=utf-8');
@@ -413,6 +414,14 @@ wss.on('connection', (ws) => {
 
 // Periodisch pruefen, ob Tracker "stale" (offline) geworden sind, damit die Karte das auch
 // ohne neues Positions-Update aktualisiert (z.B. Handy hat Netz verloren).
+// Live-Rangliste: alle 5 s fuer laufende Wettfahrten neu berechnen und an alle Zuschauer schicken
+setInterval(() => {
+  if (!wss.clients.size) return;
+  for (const race of regatta.runningRaces()) {
+    try { broadcast({ type: 'ranking', raceId: race.id, ranking: regatta.getLive(race.id) }); } catch (err) { console.error('[live]', err.message); }
+  }
+}, 5000);
+
 setInterval(() => {
   broadcast({ type: 'status', stale: store.staleMap() }); // klein (nur Online/Offline) und haelt die Verbindung offen
 }, 15000);

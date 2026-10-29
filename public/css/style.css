@@ -218,3 +218,6 @@ table.results td.num { font-variant-numeric: tabular-nums; white-space: nowrap; 
 .warn-text { color: #f58231; font-size: 0.78rem; }
 #line-map { height: 340px; border-radius: 8px; margin-bottom: 0.6rem; }
 .countdown { font-size: 2rem; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+.bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.bar > div { height: 100%; background: var(--accent); }

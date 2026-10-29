@@ -39,6 +39,8 @@
   let trackers = [];
   let regatta = { classes: [], boats: {}, line: null, races: [] };
   const lineDraft = { a: null, b: null, mark: null };
+  const courseDraft = { marks: [], radiusM: 250 };
+  let detectedMarks = [];   // von der Auswertung gefundene Bojen (blau)
 
   // ---------- Yardstick ----------
   function renderClasses() {
@@ -114,7 +116,17 @@
     if (lineDraft.a && lineDraft.b) {
       L.polyline([[lineDraft.a.lat, lineDraft.a.lon], [lineDraft.b.lat, lineDraft.b.lon]], { color: '#e6194b', weight: 4 }).addTo(layer);
     }
-    if (pts.length) map.fitBounds(pts.map((k) => [lineDraft[k].lat, lineDraft[k].lon]), { maxZoom: 17, padding: [30, 30] });
+    courseDraft.marks.forEach((m, i) => {
+      L.circleMarker([m.lat, m.lon], { radius: 9, color: '#f58231', fillOpacity: 0.7 }).bindTooltip(`Boje ${i + 1} (gezeichnet)`, { permanent: true, direction: 'top' }).addTo(layer);
+    });
+    if (courseDraft.marks.length > 1) {
+      L.polyline(courseDraft.marks.map((m) => [m.lat, m.lon]), { color: '#f58231', weight: 2, dashArray: '6 6' }).addTo(layer);
+    }
+    detectedMarks.filter((m) => !m.approx).forEach((m, i) => {
+      L.circleMarker([m.lat, m.lon], { radius: 6, color: '#3ba7ff', fillOpacity: 0.9 }).bindTooltip(`erkannt (${m.n} Rundungen)`, { direction: 'bottom' }).addTo(layer);
+    });
+    const all = pts.map((k) => [lineDraft[k].lat, lineDraft[k].lon]).concat(courseDraft.marks.map((m) => [m.lat, m.lon]));
+    if (all.length && !drawLine.fitted) { drawLine.fitted = true; map.fitBounds(all, { maxZoom: 17, padding: [30, 30] }); }
   }
   function renderLineControls() {
     const opts = '<option value="">Tracker-Position...</option>' + trackers
@@ -135,11 +147,99 @@
     });
   }
   map.on('click', (e) => {
+    if (picking === 'course') {
+      courseDraft.marks.push({ lat: e.latlng.lat, lon: e.latlng.lng });
+      renderCourse(); drawLine();   // Modus bleibt aktiv: weitere Boje setzen, "Boje auf Karte setzen" nochmals klicken beendet ihn
+      return;
+    }
     if (!picking) return;
     lineDraft[picking] = { lat: e.latlng.lat, lon: e.latlng.lng };
     picking = null;
     $('line-msg').textContent = '';
     renderLineControls(); drawLine();
+  });
+
+  // ---------- Kurs (Bojen) ----------
+  function renderCourse() {
+    $('course-list').innerHTML = courseDraft.marks.length
+      ? courseDraft.marks.map((m, i) => `Boje ${i + 1}: <span class="mono">${m.lat.toFixed(5)}, ${m.lon.toFixed(5)}</span>`).join('<br>')
+      : 'Noch keine Boje gezeichnet.';
+    $('course-radius').value = courseDraft.radiusM;
+  }
+  $('course-add').addEventListener('click', () => {
+    picking = picking === 'course' ? null : 'course';
+    $('course-msg').textContent = picking === 'course' ? 'Klicke nacheinander auf die Karte: eine Boje pro Klick (Fahrtreihenfolge). Nochmals klicken beendet.' : '';
+  });
+  $('course-undo').addEventListener('click', () => { courseDraft.marks.pop(); renderCourse(); drawLine(); });
+  $('course-clear').addEventListener('click', () => { courseDraft.marks = []; renderCourse(); drawLine(); });
+  $('course-radius').addEventListener('change', () => { courseDraft.radiusM = parseFloat($('course-radius').value) || 250; });
+  $('course-save').addEventListener('click', guard(async () => {
+    courseDraft.radiusM = parseFloat($('course-radius').value) || 250;
+    await api('/api/admin/course', 'PUT', { marks: courseDraft.marks.length ? courseDraft.marks : null, radiusM: courseDraft.radiusM });
+    $('course-msg').textContent = courseDraft.marks.length ? 'Kurs gespeichert. Gilt fuer neue Wettfahrten bzw. nach "Linie & Kurs uebernehmen".' : 'Kurs geloescht.';
+    await load();
+  }));
+
+  // Import: GPX oder GeoJSON -> Punkte; Strecken werden auf die Eckpunkte vereinfacht (Douglas-Peucker, 20 m)
+  function simplify(points, epsM) {
+    if (points.length < 3) return points;
+    const k = Math.cos((points[0].lat * Math.PI) / 180);
+    const xy = points.map((p) => ({ x: p.lon * 111320 * k, y: p.lat * 110574 }));
+    const keep = new Array(points.length).fill(false);
+    keep[0] = keep[points.length - 1] = true;
+    const stack = [[0, points.length - 1]];
+    while (stack.length) {
+      const [a, b] = stack.pop();
+      let maxD = 0; let idx = -1;
+      for (let i = a + 1; i < b; i += 1) {
+        const dx = xy[b].x - xy[a].x; const dy = xy[b].y - xy[a].y;
+        const len = Math.hypot(dx, dy) || 1;
+        const d = Math.abs(dx * (xy[a].y - xy[i].y) - (xy[a].x - xy[i].x) * dy) / len;
+        if (d > maxD) { maxD = d; idx = i; }
+      }
+      if (maxD > epsM && idx > 0) { keep[idx] = true; stack.push([a, idx], [idx, b]); }
+    }
+    return points.filter((_, i) => keep[i]);
+  }
+  function parsePoints(text, name) {
+    const lower = name.toLowerCase();
+    if (lower.endsWith('.gpx') || text.trim().startsWith('<')) {
+      const doc = new DOMParser().parseFromString(text, 'application/xml');
+      const pick = (sel) => [...doc.querySelectorAll(sel)].map((n) => ({ lat: parseFloat(n.getAttribute('lat')), lon: parseFloat(n.getAttribute('lon')) }));
+      const rte = pick('rtept'); if (rte.length) return { points: rte, path: true };
+      const trk = pick('trkpt'); if (trk.length) return { points: trk, path: true };
+      return { points: pick('wpt'), path: false };
+    }
+    const gj = JSON.parse(text);
+    const feats = gj.type === 'FeatureCollection' ? gj.features : gj.type === 'Feature' ? [gj] : [{ geometry: gj }];
+    const line = []; const pts = [];
+    for (const f of feats) {
+      const g = f.geometry || {};
+      if (g.type === 'LineString') g.coordinates.forEach((c) => line.push({ lat: c[1], lon: c[0] }));
+      else if (g.type === 'MultiLineString') g.coordinates.forEach((l) => l.forEach((c) => line.push({ lat: c[1], lon: c[0] })));
+      else if (g.type === 'Point') pts.push({ lat: g.coordinates[1], lon: g.coordinates[0] });
+      else if (g.type === 'MultiPoint') g.coordinates.forEach((c) => pts.push({ lat: c[1], lon: c[0] }));
+    }
+    return line.length ? { points: line, path: true } : { points: pts, path: false };
+  }
+  $('course-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const { points, path } = parsePoints(await file.text(), file.name);
+      let marks = points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+      if (path) {
+        marks = simplify(marks, 20);
+        if ($('course-trim').checked && marks.length > 2) marks = marks.slice(1, -1);
+      }
+      if (!marks.length) throw new Error('Keine Punkte gefunden');
+      courseDraft.marks = marks.slice(0, 20);
+      renderCourse(); drawLine();
+      $('course-msg').textContent = `${courseDraft.marks.length} Boje(n) aus der Datei uebernommen - bitte pruefen und "Kurs speichern" klicken.`;
+    } catch (err) {
+      $('course-msg').textContent = `Import fehlgeschlagen: ${err.message}`;
+    }
+    e.target.value = '';
   });
   $('line-save').addEventListener('click', guard(async () => {
     await api('/api/admin/line', 'PUT', lineDraft);
@@ -149,8 +249,12 @@
 
   // ---------- Wettfahrten ----------
   $('race-create').addEventListener('click', guard(async () => {
-    await api('/api/admin/races', 'POST', { name: $('race-name').value, laps: $('race-laps').value });
+    const startTs = fromLocalInput($('race-start').value);
+    await api('/api/admin/races', 'POST', {
+      name: $('race-name').value, laps: $('race-laps').value, cutoffMinutes: $('race-cutoff').value, startTs: startTs || undefined
+    });
     $('race-name').value = '';
+    $('race-start').value = '';
     await load();
   }));
 
@@ -176,6 +280,19 @@
         ${started ? '<button class="secondary start-clear">Start loeschen</button>' : ''}
         <button class="danger race-del">Wettfahrt loeschen</button>
       </div>`;
+    const settings = r.official ? '' : `
+      <div class="row">
+        <div class="field"><label>Runden</label><input type="number" class="rc-laps" min="1" max="10" value="${r.laps}" style="width:70px" /></div>
+        <div class="field"><label>Zielschluss (Min. nach Start)</label><input type="number" class="rc-cutoff" min="10" max="1440" value="${r.cutoffMinutes}" style="width:90px" /></div>
+        <button class="secondary rc-save">Speichern</button>
+        <button class="secondary rc-geo" title="Setzt Linie und Kurs dieser Wettfahrt auf die aktuell gespeicherten Werte">Linie &amp; Kurs aktuell uebernehmen</button>
+        ${r.hasLine ? '' : '<span class="warn-text">keine Linie gespeichert</span>'}
+        ${r.hasCourse ? '' : '<span class="warn-text">kein Kurs: keine Live-Rangliste</span>'}
+      </div>`;
+    const links = started ? `<div class="row" style="margin-top:0.4rem"><span class="hint">Positionen dieser Wettfahrt:</span>
+        <a href="/api/admin/export/tracks.csv?race=${r.id}" style="color:var(--accent)">CSV</a>
+        <a href="/api/admin/export/tracks.gpx?race=${r.id}" style="color:var(--accent)">GPX</a>
+        <a href="/live.html?race=${r.id}" style="color:var(--accent)">Live-Rangliste</a></div>` : '';
     let table = '';
     if (res && res.entries.length) {
       table = `<table class="results"><thead><tr><th>Rang</th><th>Boot</th><th>Klasse / YS</th><th>Status</th>
@@ -188,7 +305,7 @@
         ${started ? `<button class="${r.official ? 'secondary' : ''} official-toggle">${r.official ? 'Freigabe zuruecknehmen' : 'Ergebnis offiziell freigeben'}</button>
         <a href="/api/races/${r.id}/results.csv" style="color:var(--accent)">CSV</a>` : ''}
       </div>`;
-    return `<div class="card" data-race="${r.id}" style="background:var(--panel-2)">${head}${controls}${table}${footer}</div>`;
+    return `<div class="card" data-race="${r.id}" style="background:var(--panel-2)">${head}${controls}${settings}${table}${footer}${links}</div>`;
   }
 
   function entryRows(r, e) {
@@ -229,6 +346,15 @@
         await api(`/api/admin/races/${id}/start`, 'POST', { ts }); await load();
       });
       on('.start-clear', async () => { await api(`/api/admin/races/${id}/clear-start`, 'POST'); await load(); });
+      on('.rc-save', async () => {
+        await api(`/api/admin/races/${id}`, 'PATCH', { laps: card.querySelector('.rc-laps').value, cutoffMinutes: card.querySelector('.rc-cutoff').value });
+        await load();
+      });
+      on('.rc-geo', async () => {
+        if (!confirm('Linie und Kurs dieser Wettfahrt auf die aktuell gespeicherten Werte setzen?')) return;
+        await api(`/api/admin/races/${id}/apply-geometry`, 'POST', {});
+        await load();
+      });
       on('.race-del', async () => { if (confirm('Wettfahrt wirklich loeschen?')) { await api(`/api/admin/races/${id}`, 'DELETE'); await load(); } });
       on('.official-toggle', async () => {
         const r = regatta.races.find((x) => x.id === id);
@@ -263,12 +389,49 @@
       results[r.id] = await api(`/api/races/${r.id}/results`);
     }));
     renderClasses(); renderBoats(); renderRaces();
+    await loadHistory();
+    await loadDetectedMarks();
+  }
+
+  // ---------- Aufzeichnungen und Export ----------
+  const fmtDateTime = (ts) => (ts ? new Date(ts).toLocaleString('de-CH', { hour12: false }) : '–');
+  async function loadHistory() {
+    const h = await api('/api/admin/history/summary');
+    $('history').innerHTML = h.trackers.length
+      ? `<table class="results"><thead><tr><th>Boot</th><th>LoRa-Nr</th><th>Positionen</th><th>Erste</th><th>Letzte</th></tr></thead><tbody>
+          ${h.trackers.map((t) => `<tr><td>${esc(t.name)}</td><td>${t.loraId ?? ''}</td><td class="num">${t.count}</td>
+            <td class="num">${fmtDateTime(t.firstTs)}</td><td class="num">${fmtDateTime(t.lastTs)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="hint">Noch keine Tracker.</p>';
+  }
+  function exportLinks() {
+    const q = new URLSearchParams();
+    const f = fromLocalInput($('ex-from').value);
+    const t = fromLocalInput($('ex-to').value);
+    if (f) q.set('from', f);
+    if (t) q.set('to', t);
+    const qs = q.toString() ? `?${q}` : '';
+    $('ex-csv').href = `/api/admin/export/tracks.csv${qs}`;
+    $('ex-gpx').href = `/api/admin/export/tracks.gpx${qs}`;
+  }
+  $('ex-from').addEventListener('change', exportLinks);
+  $('ex-to').addEventListener('change', exportLinks);
+  exportLinks();
+
+  // Bojen, die das System aus den Logs der zuletzt gestarteten Wettfahrt mit Kurs erkannt hat (blau auf der Karte)
+  async function loadDetectedMarks() {
+    const race = regatta.races.filter((r) => r.startTs != null && r.hasCourse).sort((a, b) => b.startTs - a.startTs)[0];
+    detectedMarks = [];
+    if (race) {
+      try { detectedMarks = (await api(`/api/races/${race.id}/live`)).marks || []; } catch { /* keine Daten */ }
+    }
+    drawLine();
   }
 
   let firstLoad = true;
   load().then(() => {
     if (regatta.line) Object.assign(lineDraft, regatta.line);
-    renderLineControls(); drawLine();
+    if (regatta.course) { courseDraft.marks = regatta.course.marks.slice(); courseDraft.radiusM = regatta.course.radiusM; }
+    renderLineControls(); renderCourse(); drawLine();
     firstLoad = false;
   }).catch((e) => alert(e.message));
   // Auto-Refresh der Ergebnisse (nicht waehrend ein Korrektur-Formular offen ist)

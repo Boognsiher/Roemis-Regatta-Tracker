@@ -87,3 +87,21 @@ test('Export-Auswahl: Wettfahrt-Zeitfenster und Wegpunkte', () => {
   assert.ok(rows > 400 && rows < 500, `Zeilen ${rows}`);   // nur Lauf 2 (451 Fixes), nicht Lauf 1
   assert.throws(() => regatta.exportSelection({ from: 'kein-datum' }), /Zeit ungueltig/);
 });
+
+test('Live-Berechnung ueber das Regatta-Modul (Historie -> Rangliste), Zwischenspeicher', () => {
+  const race = regatta.state.races.find((x) => x.name === 'Lauf 1');
+  regatta.setCourse([pt(0, 180)], 150);
+  regatta.applyGeometry(race.id);
+  const mid = regatta.computeLive(race, race.startTs + 150 * 1000);
+  assert.strictEqual(mid.needsCourse, false);
+  assert.strictEqual(mid.entries[0].status, 'RACING');
+  assert.ok(mid.entries[0].progressM > 50);
+  const end = regatta.computeLive(race, race.startTs + 500 * 1000);
+  assert.strictEqual(end.entries[0].status, 'FIN');
+  assert.strictEqual(end.entries[0].rank, 1);
+  assert.strictEqual(regatta.isRunning(race, race.startTs + 100), true);
+  assert.strictEqual(regatta.isRunning(race, regatta.raceEnd(race) + 1), false);
+  const a = regatta.getLive(race.id, race.startTs + 200 * 1000);
+  const b = regatta.getLive(race.id, race.startTs + 201 * 1000);   // innerhalb der 3 s: gleiche Daten
+  assert.strictEqual(a, b);
+});
