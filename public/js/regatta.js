@@ -409,7 +409,7 @@
         <div class="field"><label>Linie pro Runde</label>
           <select class="rc-mode" style="width:auto"><option value="bounce" ${r.lapMode === 'loop' ? '' : 'selected'}>2x kreuzen (hin/zurueck)</option>
             <option value="loop" ${r.lapMode === 'loop' ? 'selected' : ''}>1x, gleiche Richtung (Rundkurs)</option></select></div>
-        <label style="margin:0"><input type="checkbox" class="rc-ext" ${r.startOnExtension === false ? '' : 'checked'} /> Start auch in der Verlaengerung der Linie</label>
+        <label style="margin:0"><input type="checkbox" class="rc-ext" ${r.startOnExtension === false ? '' : 'checked'} /> Start der 1. Runde auch in der Verlaengerung der Linie</label>
         <button class="secondary rc-save">Speichern</button>
         <button class="secondary rc-geo" title="Setzt Linie und Kurs dieser Wettfahrt auf die aktuell gespeicherten Werte">Linie &amp; Kurs aktuell uebernehmen</button>
         ${r.hasLine ? '' : '<span class="warn-text">keine Linie gespeichert</span>'}

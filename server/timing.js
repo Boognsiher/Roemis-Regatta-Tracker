@@ -70,7 +70,8 @@ function sideOf(pl, p) {
  * Findet alle Durchgaenge durch die Linie in einer nach Zeit sortierten Fix-Liste.
  *  - 'finish' (Kursseite -> Vorstartseite) zaehlt nur zwischen den Marken (GPS-Toleranz finishTolM an beiden Enden).
  *  - 'start'  (Vorstartseite -> Kursseite) zaehlt zwischen den Marken und, wenn startExtensionM > 0, auch in der Verlaengerung
- *    der Linie bis zu dieser Entfernung hinter den Marken (Start darf in der Verlaengerung der Linie erfolgen).
+ *    der Linie bis zu dieser Entfernung hinter den Marken (markiert mit onExtension; analyzeBoat laesst das nur fuer den
+ *    Start der 1. Runde gelten).
  * Durchgaenge, die nicht zaehlen, kommen (falls angegeben) mit dem Abstand zur naechsten Marke in "outside".
  */
 function findCrossings(pl, fixes, outside = null, { startExtensionM = 0, finishTolM = 3 } = {}) {
@@ -98,7 +99,8 @@ function findCrossings(pl, fixes, outside = null, { startExtensionM = 0, finishT
           ts: prev.ts + u * (f.ts - prev.ts),
           dir,
           uncertaintyMs: f.ts - prev.ts,
-          onExtension: missM > finishTolM
+          onExtension: missM > finishTolM,
+          missM
         });
       } else if (outside) {
         outside.push({ ts: prev.ts + u * (f.ts - prev.ts), meters: missM, dir });
@@ -140,7 +142,7 @@ function normalizeFixes(fixes) {
  * Rueckgabe: { status: 'FIN'|'DNF'|'DNS', laps:[{n,ts,lapSeconds}], finishTs, elapsedSec,
  *              uncertaintyMs, warnings:[] }
  */
-const START_EXTENSION_MAX_M = 400;   // so weit hinter den Marken darf ein Start in der Verlaengerung der Linie liegen
+const START_EXTENSION_MAX_M = 400;   // so weit hinter den Marken darf der Start der 1. Runde in der Verlaengerung der Linie liegen
 
 function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null, lapMode = 'bounce', startOnExtension = true }) {
   const warnings = [];
@@ -162,12 +164,23 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
   if (sideAtGun > 0) warnings.push('Beim Startsignal auf der Kursseite (OCS?) - bitte pruefen');
 
   const laps = [];
+  const extWarned = new Set();
   let lastLapTs = null;
   let startCrossingTs = null;
   for (const c of crossings) {
     if (c.ts < startTs) continue;
     if (sideAtGun > 0 && !returnedFromOcs) {
       if (c.dir === 'finish') returnedFromOcs = true;
+      continue;
+    }
+    // Verlaengerung der Linie gilt NUR fuer den Start der 1. Runde. Jeder weitere Start-Durchgang (Runde 2, ...) muss
+    // zwischen den Marken liegen; das Ziel (Ende einer Runde) sowieso.
+    if (c.dir === 'start' && c.onExtension && laps.length > 0) {
+      const lapNo = laps.length + 1;
+      if (!extWarned.has(lapNo)) {
+        extWarned.add(lapNo);
+        warnings.push(`Start der Runde ${lapNo} in der Verlaengerung der Linie (${Math.round(c.missM)} m neben der Marke) - zaehlt nicht, der Start jeder weiteren Runde muss zwischen den Marken liegen`);
+      }
       continue;
     }
     if (lapMode === 'loop') {

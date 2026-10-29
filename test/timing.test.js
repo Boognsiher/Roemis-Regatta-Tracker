@@ -134,42 +134,46 @@ test('Zu kurze Linie: Boot kreuzt knapp ausserhalb der Marken -> Warnung nennt d
   assert.ok(r.warnings.some((w) => /nur 20 m daneben/.test(w)), r.warnings.join(' | '));
 });
 
-// ---- Start in der Verlaengerung der Linie erlaubt, Ziel (Ende der Runde) nur zwischen den Marken ----
-// Pfad: Start bei x = startX (hinter dem Pin: Verlaengerung), Aufstieg nach Norden, Rueckweg bei x = finishX nach Sueden, 2 Runden
-function twoLapPath(startX, finishX) {
-  return [[startX, -100], [startX, 300], [finishX, 300], [finishX, -100], [startX, -100], [startX, 300], [finishX, 300], [finishX, -100]];
+// ---- Linienregeln: Start der 1. Runde darf in der Verlaengerung liegen, alles andere nur zwischen den Marken ----
+// Pfad (2 Runden): Start Runde 1 bei x = s1, Rueckweg (Ziel Runde 1) bei x = f, Start Runde 2 bei x = s2, Ziel Runde 2 bei x = f
+function twoLapPath(s1, s2, f) {
+  return [[s1, -100], [s1, 300], [f, 300], [f, -100], [s2, -100], [s2, 300], [f, 300], [f, -100]];
 }
 const bounceOpts = { startTs: 100000, laps: 2, minLapSeconds: 60 };
+const run = (path, opts = {}, until = 1000) => T.analyzeBoat(pl, pathFixes(path, 4, 100000, until), { ...bounceOpts, ...opts });
 
-test('Start in der Verlaengerung (30 m hinter dem Ende) zaehlt, Ziel zwischen den Marken zaehlt -> 2 Runden', () => {
-  const fixes = pathFixes(twoLapPath(80, 0), 4, 100000, 900);
-  const r = T.analyzeBoat(pl, fixes, bounceOpts);
+test('Start der 1. Runde in der Verlaengerung (30 m hinter dem Ende) zaehlt; Start Runde 2 und beide Ziele zwischen den Marken -> 2 Runden', () => {
+  const r = run(twoLapPath(80, 0, 0));
   assert.strictEqual(r.status, 'FIN');
   assert.strictEqual(r.laps.length, 2);
-  // Pfad: 400 + 80 + 400 + 80 = 960 m je Runde -> 240 s; Zieldurchgang Runde 1 nach 25 + 100 + ... : nur Plausibilitaet
   assert.ok(r.laps[0].lapSeconds > 100 && r.laps[1].lapSeconds > 100);
+  assert.deepStrictEqual(r.warnings, []);
 });
 
-test('Ziel ausserhalb der Marken (30 m neben dem Ende) zaehlt NICHT, mit klarer Warnung', () => {
-  const fixes = pathFixes(twoLapPath(0, 80), 4, 100000, 900);
-  const r = T.analyzeBoat(pl, fixes, bounceOpts);
+test('Start der 2. Runde in der Verlaengerung zaehlt NICHT: Runde 2 kann nicht enden, Warnung nennt die Runde', () => {
+  const r = run(twoLapPath(80, 80, 0));
+  assert.strictEqual(r.status, 'DNF');
+  assert.strictEqual(r.laps.length, 1);                              // Runde 1 ist gueltig
+  assert.ok(r.warnings.some((w) => /Start der Runde 2 in der Verlaengerung/.test(w) && /30 m/.test(w)), r.warnings.join(' | '));
+});
+
+test('Ziel (Ende der Runde) ausserhalb der Marken zaehlt NICHT, mit Warnung', () => {
+  const r = run(twoLapPath(0, 0, 80));
   assert.strictEqual(r.status, 'DNF');
   assert.strictEqual(r.laps.length, 0);
   assert.ok(r.warnings.some((w) => /beim Zieldurchgang/.test(w) && /30 m daneben/.test(w)), r.warnings.join(' | '));
 });
 
-test('Start zu weit in der Verlaengerung (ueber 400 m) zaehlt nicht; ohne die Einstellung auch 30 m nicht', () => {
-  const far = T.analyzeBoat(pl, pathFixes(twoLapPath(600, 0), 4, 100000, 1200), bounceOpts);
-  assert.strictEqual(far.status, 'DNF');
-  const off = T.analyzeBoat(pl, pathFixes(twoLapPath(80, 0), 4, 100000, 900), { ...bounceOpts, startOnExtension: false });
-  assert.strictEqual(off.status, 'DNF');
+test('Verlaengerung nur bis 400 m und nur, wenn die Wettfahrt es erlaubt', () => {
+  assert.strictEqual(run(twoLapPath(600, 0, 0), {}, 1300).status, 'DNF');                 // zu weit weg
+  assert.strictEqual(run(twoLapPath(80, 0, 0), { startOnExtension: false }).status, 'DNF'); // abgeschaltet
+  assert.strictEqual(run(twoLapPath(80, 0, 0), { startOnExtension: true }).status, 'FIN');
 });
 
-test('Kleine GPS-Toleranz (3 m) am Zielende, nicht mehr', () => {
-  const near = T.analyzeBoat(pl, pathFixes(twoLapPath(0, 52), 4, 100000, 900), bounceOpts);     // 2 m ausserhalb
-  assert.strictEqual(near.status, 'FIN');
-  const away = T.analyzeBoat(pl, pathFixes(twoLapPath(0, 55), 4, 100000, 900), bounceOpts);     // 5 m ausserhalb
-  assert.strictEqual(away.status, 'DNF');
+test('Kleine GPS-Toleranz (3 m) an den Marken, nicht mehr', () => {
+  assert.strictEqual(run(twoLapPath(0, 0, 52)).status, 'FIN');      // Ziel 2 m ausserhalb
+  assert.strictEqual(run(twoLapPath(0, 0, 55)).status, 'DNF');      // Ziel 5 m ausserhalb
+  assert.strictEqual(run(twoLapPath(52, 52, 0)).status, 'FIN');     // Starts 2 m ausserhalb zaehlen noch als "zwischen den Marken"
 });
 
 test('Rundkurs-Modus nutzt die Verlaengerung NICHT (jeder Durchgang muss zwischen den Marken liegen)', () => {
