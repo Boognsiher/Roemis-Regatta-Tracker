@@ -10,6 +10,7 @@ const regatta = require('./regatta');
 const crypto = require('crypto');
 const { createAuthGuard } = require('./authguard');
 const { createSessions } = require('./session');
+const exporter = require('./export');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
@@ -320,6 +321,35 @@ app.delete('/api/admin/trackers/:id/registration', requireAdmin, (req, res) => {
 app.put('/api/admin/line', requireAdmin, (req, res) => {
   res.json({ line: regatta.setLine(req.body) });
 });
+// Kurs (grobe Bojen-Strecke) setzen oder loeschen (marks: null)
+app.put('/api/admin/course', requireAdmin, (req, res) => {
+  res.json({ course: regatta.setCourse(req.body && req.body.marks, req.body && req.body.radiusM) });
+});
+app.post('/api/admin/races/:id/apply-geometry', requireAdmin, (req, res) => {
+  res.json({ race: regatta.applyGeometry(req.params.id, req.body || {}) });
+});
+
+// Aufzeichnungs-Uebersicht und Rohdaten-Export (Admin)
+app.get('/api/admin/history/summary', requireAdmin, (req, res) => res.json({ trackers: store.historySummary() }));
+function sendExport(kind) {
+  return (req, res) => {
+    const sel = regatta.exportSelection(req.query);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const base = `positionen-${String(sel.name).replace(/[^\w-]+/g, '_')}-${stamp}`;
+    if (kind === 'csv') {
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="${base}.csv"`);
+      res.send(exporter.tracksCsv(sel.entries, sel));
+    } else {
+      res.set('Content-Type', 'application/gpx+xml; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="${base}.gpx"`);
+      res.send(exporter.tracksGpx(sel.entries, sel));
+    }
+  };
+}
+app.get('/api/admin/export/tracks.csv', requireAdmin, sendExport('csv'));
+app.get('/api/admin/export/tracks.gpx', requireAdmin, sendExport('gpx'));
+
 app.post('/api/admin/races', requireAdmin, (req, res) => {
   res.status(201).json({ race: regatta.createRace(req.body || {}) });
 });

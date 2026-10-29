@@ -22,6 +22,13 @@ function makeProjector(lat0, lon0) {
   return (p) => ({ x: (p.lon - lon0) * kx, y: (p.lat - lat0) * ky });
 }
 
+/** Gegenstueck zu makeProjector: lokale Meter (x Ost, y Nord) -> lat/lon. */
+function makeUnprojector(lat0, lon0) {
+  const kx = (Math.PI / 180) * EARTH_R * Math.cos((lat0 * Math.PI) / 180);
+  const ky = (Math.PI / 180) * EARTH_R;
+  return (q) => ({ lat: lat0 + q.y / ky, lon: lon0 + q.x / kx });
+}
+
 function cross(ax, ay, bx, by) {
   return ax * by - ay * bx;
 }
@@ -42,7 +49,9 @@ function prepareLine(line) {
   if (len < 1) return null;
   const s = cross(dx, dy, m.x - a.x, m.y - a.y);
   if (s === 0) return null;
-  return { proj, a, dx, dy, len, courseSign: Math.sign(s) };
+  const lat0 = (line.a.lat + line.b.lat) / 2;
+  const lon0 = (line.a.lon + line.b.lon) / 2;
+  return { proj, unproj: makeUnprojector(lat0, lon0), lat0, lon0, a, dx, dy, len, courseSign: Math.sign(s) };
 }
 
 /** Vorzeichen der Seite (relativ zur Kursseite): +1 = Kursseite, -1 = Vorstartseite. */
@@ -116,14 +125,15 @@ function normalizeFixes(fixes) {
  * Rueckgabe: { status: 'FIN'|'DNF'|'DNS', laps:[{n,ts,lapSeconds}], finishTs, elapsedSec,
  *              uncertaintyMs, warnings:[] }
  */
-function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds }) {
+function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null }) {
   const warnings = [];
   const fixes = normalizeFixes(fixesRaw);
   if (!fixes.length || fixes[fixes.length - 1].ts < startTs) {
     return { status: 'DNS', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: ['Keine GPS-Daten ab dem Start'] };
   }
 
-  const crossings = findCrossings(pl, fixes);
+  // Zielschluss: Durchgaenge nach endTs zaehlen nicht (z.B. wenn danach die naechste Wettfahrt gesegelt wurde)
+  const crossings = findCrossings(pl, fixes).filter((c) => endTs == null || c.ts <= endTs);
   const atGun = positionAt(fixes, startTs);
   const sideAtGun = atGun ? sideOf(pl, atGun) : -1;
 
@@ -207,5 +217,5 @@ function rankEntries(entries) {
 }
 
 module.exports = {
-  prepareLine, findCrossings, positionAt, normalizeFixes, analyzeBoat, correctedSeconds, rankEntries
+  makeProjector, makeUnprojector,   prepareLine, findCrossings, positionAt, normalizeFixes, analyzeBoat, correctedSeconds, rankEntries
 };

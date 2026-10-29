@@ -118,6 +118,7 @@ function deleteTracker(id) {
   delete trackers[id];
   delete positions[id];
   try { fs.unlinkSync(historyFile(id)); } catch { /* keine Historie vorhanden */ }
+  historyCache.delete(id);
   if (existed) scheduleSave();
   return existed;
 }
@@ -191,6 +192,46 @@ function setLoraId(id, n) {
   t.loraId = n;
   scheduleSave();
   return null;
+}
+
+// Gecachte Historie: Datei wird nur einmal komplett gelesen, danach nur noch das neu Angehaengte. Das Ergebnis darf
+// von Aufrufern nicht veraendert werden (gemeinsames Array).
+const historyCache = new Map();
+function readHistoryCached(id) {
+  const file = historyFile(id);
+  let st;
+  try { st = fs.statSync(file); } catch { historyCache.delete(id); return []; }
+  let c = historyCache.get(id);
+  if (!c || st.size < c.size) c = { size: 0, fixes: [], carry: '' };
+  if (st.size > c.size) {
+    const len = st.size - c.size;
+    const buf = Buffer.alloc(len);
+    const fd = fs.openSync(file, 'r');
+    try { fs.readSync(fd, buf, 0, len, c.size); } finally { fs.closeSync(fd); }
+    const lines = (c.carry + buf.toString('utf8')).split('\n');
+    c.carry = lines.pop(); // letzte (evtl. unvollstaendige) Zeile erst beim naechsten Mal
+    for (const line of lines) {
+      if (!line) continue;
+      try { c.fixes.push(JSON.parse(line)); } catch { /* defekte Zeile ueberspringen */ }
+    }
+    c.size = st.size;
+  }
+  historyCache.set(id, c);
+  return c.fixes;
+}
+
+/** Pro Tracker: Anzahl Eintraege sowie erste/letzte Zeit der Aufzeichnung. */
+function historySummary() {
+  return Object.values(trackers).map((t) => {
+    const fixes = readHistoryCached(t.id);
+    let first = null;
+    let last = null;
+    for (const f of fixes) {
+      if (first === null || f.ts < first) first = f.ts;
+      if (last === null || f.ts > last) last = f.ts;
+    }
+    return { trackerId: t.id, name: t.name, loraId: t.loraId ?? null, count: fixes.length, firstTs: first, lastTs: last };
+  });
 }
 
 function recordPosition(id, pos) {
@@ -272,6 +313,8 @@ function clearTrail(id) {
 }
 
 module.exports = {
+  readHistoryCached,
+  historySummary,
   flush,
   findTrackerByToken,
   decimate,

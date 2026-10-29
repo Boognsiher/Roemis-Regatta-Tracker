@@ -17,7 +17,7 @@ const STATUS_CODES = ['DNS', 'DNF', 'DSQ', 'OCS', 'RET', 'DNC'];
 
 /** @type {{classes: object[], boats: Record<string, object>, line: object|null, races: object[]}} */
 const state = Object.assign(
-  { classes: [], boats: {}, line: null, races: [] },
+  { classes: [], boats: {}, line: null, course: null, races: [] },
   store.loadJson(FILE, {})
 );
 
@@ -132,6 +132,21 @@ function setLine(line) {
   return state.line;
 }
 
+/**
+ * Grobe Bojen-Strecke (in Fahrtreihenfolge fuer EINE Runde, ohne Start/Ziel-Linie). Die genauen Positionen findet das
+ * System selbst aus den Logs der Boote (Wendepunkte in der Naehe der gezeichneten Punkte).
+ */
+function setCourse(marks, radiusM) {
+  if (marks === null) { state.course = null; save(); return null; }
+  if (!Array.isArray(marks) || marks.length < 1 || marks.length > 20 || !marks.every(isPoint)) {
+    throw httpError(400, 'Kurs braucht 1-20 Punkte (je lat/lon)');
+  }
+  const r = Number.isFinite(radiusM) ? Math.min(1000, Math.max(30, radiusM)) : 250;
+  state.course = { marks: marks.map(point), radiusM: r };
+  save();
+  return state.course;
+}
+
 // ---------- Wettfahrten ----------
 
 function getRace(id) {
@@ -144,19 +159,45 @@ function assertEditable(race) {
   if (race.official) throw httpError(409, 'Wettfahrt ist offiziell freigegeben - erst zuruecknehmen');
 }
 
-function createRace({ name, laps, minLapSeconds }) {
+const clone = (o) => (o ? JSON.parse(JSON.stringify(o)) : null);
+const parseCutoff = (v, fallback) => Math.min(24 * 60, Math.max(10, parseInt(v, 10) || fallback));
+
+/** Wettfahrt anlegen. Mit startTs (auch in der Vergangenheit) wird sie sofort aus den vorhandenen Aufzeichnungen gewertet. */
+function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs }) {
   const race = {
     id: genId(),
     name: String(name || `Wettfahrt ${state.races.length + 1}`).trim().slice(0, 60),
     laps: Math.max(1, Math.min(10, parseInt(laps, 10) || 2)),
     minLapSeconds: Math.max(10, parseInt(minLapSeconds, 10) || 120),
+    cutoffMinutes: parseCutoff(cutoffMinutes, 180),
     startTs: null,
-    line: state.line ? JSON.parse(JSON.stringify(state.line)) : null,
+    line: clone(state.line),
+    course: clone(state.course),
     overrides: {},
     official: false,
     createdAt: Date.now()
   };
+  if (startTs != null && startTs !== '') {
+    if (!isNum(startTs)) throw httpError(400, 'startTs ungueltig');
+    if (!race.line) throw httpError(400, 'Zuerst Start-/Ziellinie festlegen');
+    race.startTs = startTs;
+  }
   state.races.push(race);
+  save();
+  return race;
+}
+
+/** Zielschluss einer Wettfahrt (ms): Durchgaenge danach zaehlen nicht mehr. */
+function raceEnd(race) {
+  return race.startTs == null ? null : race.startTs + (race.cutoffMinutes || 180) * 60000;
+}
+
+/** Linie und Kurs der Wettfahrt auf die aktuell gespeicherten Werte setzen (fuer nachtraegliche Wettfahrten). */
+function applyGeometry(id, { line = true, course = true } = {}) {
+  const race = getRace(id);
+  assertEditable(race);
+  if (line) race.line = clone(state.line);
+  if (course) race.course = clone(state.course);
   save();
   return race;
 }
@@ -167,6 +208,7 @@ function updateRace(id, patch) {
   if (patch.name != null) race.name = String(patch.name).trim().slice(0, 60) || race.name;
   if (patch.laps != null) race.laps = Math.max(1, Math.min(10, parseInt(patch.laps, 10) || race.laps));
   if (patch.minLapSeconds != null) race.minLapSeconds = Math.max(10, parseInt(patch.minLapSeconds, 10) || race.minLapSeconds);
+  if (patch.cutoffMinutes != null) race.cutoffMinutes = parseCutoff(patch.cutoffMinutes, race.cutoffMinutes || 180);
   save();
   return race;
 }
@@ -185,7 +227,8 @@ function startRace(id, ts) {
   const t = isNum(ts) ? ts : Date.now();
   if (!state.line) throw httpError(400, 'Zuerst Start-/Ziellinie festlegen');
   race.startTs = t;
-  race.line = JSON.parse(JSON.stringify(state.line));
+  race.line = clone(state.line);
+  race.course = clone(state.course);
   save();
   return race;
 }
@@ -234,6 +277,13 @@ function setOfficial(id, official) {
 
 // ---------- Auswertung ----------
 
+/** Nur die Positionen im Zeitfenster der Wettfahrt (15 min vor Start bis kurz nach Zielschluss). */
+function windowFixes(fixes, race) {
+  const from = race.startTs - 15 * 60000;
+  const to = raceEnd(race) + 5 * 60000;
+  return fixes.filter((f) => f.ts >= from && f.ts <= to);
+}
+
 function computeResults(race) {
   const base = {
     race: {
@@ -253,7 +303,7 @@ function computeResults(race) {
     const ov = race.overrides[trackerId] || {};
 
     const a = pl
-      ? timing.analyzeBoat(pl, store.readHistory(trackerId), race)
+      ? timing.analyzeBoat(pl, windowFixes(store.readHistoryCached(trackerId), race), { ...race, endTs: raceEnd(race) })
       : { status: 'DNS', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: ['Keine Linie definiert'] };
 
     let { status, finishTs, elapsedSec } = a;
@@ -316,15 +366,63 @@ function publicState() {
     classes: state.classes,
     boats: state.boats,
     line: state.line,
+    course: state.course,
     races: state.races.map((r) => ({
-      id: r.id, name: r.name, laps: r.laps, minLapSeconds: r.minLapSeconds, startTs: r.startTs,
-      official: r.official, overrides: r.overrides
+      id: r.id, name: r.name, laps: r.laps, minLapSeconds: r.minLapSeconds, cutoffMinutes: r.cutoffMinutes || 180,
+      startTs: r.startTs, official: r.official, overrides: r.overrides, hasLine: !!r.line, hasCourse: !!r.course
     }))
   };
 }
 
+// ---------- Export ----------
+
+function parseTime(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = /^\d+$/.test(String(v)) ? Number(v) : Date.parse(v);
+  if (!Number.isFinite(n)) throw httpError(400, `Zeit ungueltig: ${v}`);
+  return n;
+}
+
+/** Aufzeichnungen fuer den Export waehlen: ganze Historie, Zeitfenster (from/to) oder eine Wettfahrt (race). */
+function exportSelection({ race, from, to, trackers }) {
+  let f = parseTime(from);
+  let t = parseTime(to);
+  let waypoints = [];
+  let name = 'Regatta';
+  const src = state.line || state.course ? { line: state.line, course: state.course } : { line: null, course: null };
+  let geo = src;
+  if (race) {
+    const r = getRace(race);
+    if (r.startTs == null) throw httpError(400, 'Wettfahrt hat keinen Start');
+    f = r.startTs - 10 * 60000;
+    t = raceEnd(r) + 10 * 60000;
+    name = r.name;
+    geo = { line: r.line, course: r.course };
+  }
+  if (geo.line) {
+    waypoints.push({ lat: geo.line.a.lat, lon: geo.line.a.lon, name: 'Linie A' }, { lat: geo.line.b.lat, lon: geo.line.b.lon, name: 'Linie B' });
+  }
+  if (geo.course) geo.course.marks.forEach((m, i) => waypoints.push({ lat: m.lat, lon: m.lon, name: `Boje ${i + 1} (grob)` }));
+  const ids = trackers ? String(trackers).split(',').filter(Boolean) : store.listTrackers().map((x) => x.id);
+  const entries = [];
+  for (const id of ids) {
+    const tr = store.getTracker(id);
+    if (!tr) continue;
+    const boat = state.boats[id];
+    const cls = boat && state.classes.find((c) => c.id === boat.classId);
+    entries.push({
+      tracker: { id: tr.id, name: tr.name, loraId: tr.loraId ?? null },
+      boat: boat ? { sailNo: boat.sailNo, helm: boat.helm, className: cls ? cls.name : '' } : null,
+      fixes: store.readHistoryCached(id)
+    });
+  }
+  return { entries, from: f, to: t, name, waypoints };
+}
+
 module.exports = {
+  exportSelection,
   flush, state, STATUS_CODES, httpError, publicState,
+  setCourse, applyGeometry, raceEnd, windowFixes,
   addClass, importClasses, deleteClass, registerBoat, unregisterBoat, setLine,
   getRace, createRace, updateRace, deleteRace, startRace, clearStart, setOverride, setOfficial,
   computeResults, toCsv
