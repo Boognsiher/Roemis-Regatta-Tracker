@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Regatta - Wettfahrtleitung</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="wide-wrap">
+    <p><a href="index.html" style="color:var(--muted)">← Live-Karte</a> ·
+       <a href="admin.html" style="color:var(--muted)">Tracker-Admin</a> ·
+       <a href="results.html" style="color:var(--muted)">Oeffentliche Ergebnisse</a></p>
+    <h1>Wettfahrtleitung</h1>
+    <p id="no-login" class="error-msg" style="display:none">Nicht angemeldet - bitte zuerst im
+      <a href="admin.html">Admin-Bereich</a> anmelden.</p>
+
+    <div id="main" style="display:none">
+      <div class="card">
+        <h2 style="margin-top:0">1. Yardstick-Liste</h2>
+        <p class="hint">Liste einfuegen (eine Klasse pro Zeile: <span class="mono">Name;Zahl</span>, auch
+          Komma oder Tab, z.B. aus Excel kopiert) oder einzelne Klasse hinzufuegen. Eintraege mit gleichem Namen
+          werden aktualisiert.</p>
+        <textarea id="ys-text" placeholder="Laser;114&#10;Optimist;165&#10;420er;103"></textarea>
+        <div class="row" style="margin-top:0.5rem">
+          <button id="ys-import">Liste importieren</button>
+          <label style="margin:0"><input type="checkbox" id="ys-replace" /> vorhandene (unbenutzte) ersetzen</label>
+          <span id="ys-msg" class="hint"></span>
+        </div>
+        <div class="row">
+          <div class="field"><label for="ys-name">Klasse</label><input type="text" id="ys-name" /></div>
+          <div class="field"><label for="ys-num">Yardstick</label><input type="number" id="ys-num" step="0.1" style="width:100px" /></div>
+          <button id="ys-add" class="secondary">Hinzufuegen</button>
+        </div>
+        <div id="ys-list" class="hint"></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">2. Boote registrieren</h2>
+        <p class="hint">Skipper koennen das auch selbst auf ihrer Tracker-Seite tun.</p>
+        <div id="boats"></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">3. Kurs, Start-/Ziellinie und Bahnmarken</h2>
+        <div class="row">
+          <div class="field" style="flex:1;min-width:240px"><label for="cs-select">Kurs (waehlt Geometrie und Zaehllogik)</label>
+            <select id="cs-select"></select></div>
+          <button id="cs-copy" class="secondary">Kopie davon</button>
+          <button id="cs-new-loop" class="secondary">Neu: Rundkurs</button>
+          <button id="cs-new-bounce" class="secondary">Neu: hin und zurueck</button>
+          <button id="cs-del" class="danger">Kurs loeschen</button>
+        </div>
+        <div class="row">
+          <div class="field"><label for="cs-name">Name</label><input type="text" id="cs-name" /></div>
+          <div class="field"><label for="cs-mode">Linie pro Runde</label>
+            <select id="cs-mode" style="width:auto">
+              <option value="loop">immer dieselbe Richtung (Rundkurs)</option>
+              <option value="bounce">hin und zurueck (gegenlaeufig)</option>
+            </select></div>
+          <div class="field"><label for="cs-laps">Runden</label><input type="number" id="cs-laps" min="1" max="10" style="width:80px" /></div>
+          <div class="field"><label for="cs-minlap">Min. Rundenzeit (s)</label><input type="number" id="cs-minlap" min="10" style="width:90px" /></div>
+          <div class="field"><label for="cs-cutoff">Zielschluss (Min.)</label><input type="number" id="cs-cutoff" min="10" max="1440" style="width:90px" /></div>
+          <label style="margin:0"><input type="checkbox" id="cs-ext" /> Erster Start darf in der Verlaengerung liegen</label>
+          <button id="cs-save">Regeln speichern</button><span id="cs-msg" class="hint"></span>
+        </div>
+        <div class="field" style="margin-bottom:0.6rem"><label for="cs-desc">Beschreibung</label><input type="text" id="cs-desc" style="width:100%" /></div>
+        <p class="hint">Start und Ziel sind dieselbe Linie. Punkt waehlen und auf die Karte klicken, oder die
+          Position eines Trackers uebernehmen (z.B. Startschiff und Pin-Boot). Die Referenz-Tonne (z.B.
+          Luv-Tonne) legt die Kursseite fest.</p>
+        <div id="line-map"></div>
+        <div id="line-controls"></div>
+        <div class="row"><button id="line-save">Linie speichern</button><span id="line-msg" class="hint"></span></div>
+
+        <h3 style="margin-bottom:0.3rem">Kurs (Bahnmarken) - fuer die Live-Rangliste</h3>
+        <p class="hint">Gib die Bahnmarken einer Runde <b>in Fahrtreihenfolge</b> an (ohne Start/Ziel-Linie): per <b>Koordinaten</b>, per
+          Klick auf die Karte oder per Import. Koordinaten kannst du in den ueblichen Schreibweisen eingeben
+          (<span class="mono">46.8419, 10.5130</span> &middot; <span class="mono">46&deg;50.514' N, 10&deg;30.780' E</span> &middot;
+          <span class="mono">N 46&deg;50'30.5" E 10&deg;30'46.8"</span>; Reihenfolge ohne Buchstaben: Breite, Laenge).
+          Mit <b>&laquo;Positionen sind exakt&raquo;</b> werden sie genau so verwendet. Ohne dieses Haekchen gelten sie nur als grobe
+          Hinweise, und das System sucht die genauen Positionen selbst aus den Aufzeichnungen der Boote (Wendepunkte; dann sollten die
+          Punkte unter ca. 100 m daneben und mindestens ca. 300 m auseinander liegen).</p>
+        <div id="course-list"></div>
+        <div class="row">
+          <div class="field" style="flex:1;min-width:260px"><label for="course-coord">Boje per Koordinaten hinzufuegen</label>
+            <input type="text" id="course-coord" placeholder="46.8419, 10.5130" /></div>
+          <button id="course-coord-add" class="secondary">Hinzufuegen</button>
+          <button id="course-add" class="secondary">Boje auf Karte setzen</button>
+        </div>
+        <div class="row">
+          <div class="field" style="flex:1;min-width:200px"><label for="gate-a">Tor (zwei Marken, Durchfahrt zaehlt): Marke A</label><input type="text" id="gate-a" placeholder="46.8419, 10.5130" /></div>
+          <div class="field" style="flex:1;min-width:200px"><label for="gate-b">Marke B</label><input type="text" id="gate-b" placeholder="46.8421, 10.5140" /></div>
+          <button id="gate-add" class="secondary">Tor hinzufuegen</button>
+        </div>
+        <details style="margin-bottom:0.6rem"><summary class="hint" style="cursor:pointer">Mehrere Koordinaten auf einmal einfuegen</summary>
+          <textarea id="course-bulk" placeholder="eine Boje pro Zeile, in Fahrtreihenfolge (Tor: zwei Koordinaten mit | getrennt)&#10;46.8419, 10.5130&#10;46.8300, 10.5200 | 46.8302, 10.5210"></textarea>
+          <button id="course-bulk-btn" class="secondary" style="margin-top:0.4rem">Uebernehmen (ersetzt die Liste)</button>
+        </details>
+        <div class="row">
+          <label style="margin:0"><input type="checkbox" id="course-exact" /> Positionen sind exakt (nicht aus den Logs verfeinern)</label>
+          <button id="course-undo" class="secondary">Letzte Boje entfernen</button>
+          <button id="course-clear" class="secondary">Alle entfernen</button>
+          <button id="course-adopt" class="secondary" style="display:none">Erkannte Bojen uebernehmen</button>
+          <div class="field"><label for="course-radius">Suchradius (m)</label><input type="number" id="course-radius" value="250" min="30" max="1000" style="width:90px" /></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="course-file">Strecke importieren (GPX oder GeoJSON)</label><input type="file" id="course-file" accept=".gpx,.geojson,.json,application/gpx+xml,application/json" /></div>
+          <label style="margin:0"><input type="checkbox" id="course-trim" checked /> Start und Ende der Strecke liegen an der Linie (erster/letzter Punkt weglassen)</label>
+        </div>
+        <div class="row"><button id="course-save">Kurs speichern</button><span id="course-msg" class="hint"></span></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">4. Wettfahrten</h2>
+        <p class="hint">Neue Wettfahrt anlegen. <b>Nachtraeglich:</b> Startzeit eintragen - dann wird die Wettfahrt sofort aus den
+          vorhandenen Aufzeichnungen ausgewertet (Linie und Kurs gelten wie aktuell gespeichert). Ohne Startzeit startest du sie spaeter
+          per Startsignal.</p>
+        <div class="row">
+          <div class="field"><label for="race-course">Kurs</label><select id="race-course" style="width:auto"></select></div>
+          <div class="field"><label for="race-name">Name</label><input type="text" id="race-name" placeholder="Wettfahrt 1" /></div>
+          <div class="field"><label for="race-laps">Runden</label><input type="number" id="race-laps" value="2" min="1" max="10" style="width:80px" /></div>
+          <div class="field"><label for="race-start">Startzeit (optional, sekundengenau)</label><input type="datetime-local" step="1" id="race-start" /></div>
+          <div class="field"><label for="race-cutoff">Zielschluss (Min.)</label><input type="number" id="race-cutoff" value="180" min="10" max="1440" style="width:90px" /></div>
+          <div class="field"><label for="race-mode">Linie pro Runde</label>
+            <select id="race-mode" style="width:auto">
+              <option value="loop">immer in dieselbe Richtung (Richtung Boje 1) - Rundkurs</option>
+              <option value="bounce">hin und zurueck (2x pro Runde, gegenlaeufig)</option>
+            </select></div>
+          <label style="margin:0 0.6rem 0 0"><input type="checkbox" id="race-ext" /> Erster Start darf in der Verlaengerung der Linie liegen</label>
+          <button id="race-create">Wettfahrt anlegen</button>
+        </div>
+        <p id="race-error" class="error-msg" style="display:none"></p>
+        <div id="races"></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">5. Aufzeichnungen und Export</h2>
+        <p class="hint">Alle empfangenen Positionen werden dauerhaft gespeichert. Hier siehst du, welche Zeitraeume vorhanden sind, und
+          kannst sie als CSV (Excel) oder GPX (Karten-Apps) herunterladen. Fuer eine einzelne Wettfahrt gibt es die Links in der
+          Wettfahrt-Karte.</p>
+        <div id="history"></div>
+        <div class="row" style="margin-top:0.6rem">
+          <div class="field"><label for="ex-from">Von</label><input type="datetime-local" step="1" id="ex-from" /></div>
+          <div class="field"><label for="ex-to">Bis</label><input type="datetime-local" step="1" id="ex-to" /></div>
+          <a id="ex-csv" class="badge" href="#" style="padding:0.5rem 0.9rem">CSV herunterladen</a>
+          <a id="ex-gpx" class="badge" href="#" style="padding:0.5rem 0.9rem">GPX herunterladen</a>
+        </div>
+        <p class="hint">Ohne Von/Bis wird alles exportiert.</p>
+      </div>
+    </div>
+  </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/coords.js"></script>
+<script src="js/regatta.js"></script>
+</body>
+</html>

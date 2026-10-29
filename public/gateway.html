@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Regatta - Gateway</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="wide-wrap">
+    <p><a href="/index.html" style="color:var(--muted)">← Live-Karte</a></p>
+    <h1>Gateway (LoRa-Master)</h1>
+    <p class="hint">Android + Chrome. Verbindet sich per Bluetooth mit dem Master-ESP32 im Boot und leitet die
+      Positionen aller Boote an den Server weiter. Seite waehrend der Regatta offen und Bildschirm an lassen.</p>
+
+    <div class="card">
+      <div class="field"><label for="token">Gateway-Token (oder Admin-Token)</label>
+        <input type="password" id="token" /></div>
+      <div class="row">
+        <button id="connect">Mit Master verbinden</button>
+        <span id="ble-status" class="badge">nicht verbunden</span>
+        <span id="srv-status" class="badge">Server: –</span>
+      </div>
+      <div class="row">
+        <label style="margin:0"><input type="checkbox" id="own-on" /> Eigenes Boot per Handy-GPS melden:</label>
+        <select id="own-tracker" style="width:auto"></select>
+      </div>
+      <p id="msg" class="error-msg" style="display:none"></p>
+      <div class="hint">Empfangen: <span id="c-rx">0</span> · gesendet: <span id="c-tx">0</span> ·
+        im Puffer: <span id="c-queue">0</span> · defekte Pakete: <span id="c-bad">0</span></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">Zuletzt gehoert</h2>
+      <table class="results"><thead><tr><th>LoRa-Nr</th><th>Boot</th><th>Zuletzt</th><th>Pakete</th><th>RSSI</th><th>SNR</th><th>Akku</th></tr></thead>
+        <tbody id="heard"></tbody></table>
+    </div>
+  </div>
+<script src="/js/lora-packet.js"></script>
+<script src="/js/gateway.js"></script>
+</body>
+</html>

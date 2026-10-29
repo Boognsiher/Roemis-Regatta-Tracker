@@ -8,6 +8,7 @@
   }).addTo(map);
 
   const boatListEl = document.getElementById('boat-list');
+  const MAX_CLIENT_TRAIL = 600; // so viele Spurpunkte pro Boot haelt der Browser hoechstens
 
   /** id -> { marker, line, data } */
   const boats = new Map();
@@ -46,7 +47,7 @@
     let entry = boats.get(t.id);
 
     if (!entry) {
-      entry = { marker: null, line: null, data: t };
+      entry = { marker: null, line: null, data: t, trail: [] };
       boats.set(t.id, entry);
     }
     entry.data = t;
@@ -69,7 +70,15 @@
       entry.marker.setTooltipContent(t.name);
     }
 
-    entry.line.setLatLngs((t.trail || []).map((p) => [p.lat, p.lon]));
+    // Spur: komplette (ausgeduennte) Spur beim Laden, danach haengt der Browser jede neue Position selbst an.
+    if (Array.isArray(t.trail)) {
+      entry.trail = t.trail.slice();
+    } else {
+      const last = entry.trail[entry.trail.length - 1];
+      if (!last || latest.ts > last.ts) entry.trail.push(latest);
+      if (entry.trail.length > MAX_CLIENT_TRAIL) entry.trail.splice(0, entry.trail.length - MAX_CLIENT_TRAIL);
+    }
+    entry.line.setLatLngs(entry.trail.map((p) => [p.lat, p.lon]));
 
     if (!hasFitOnce) {
       hasFitOnce = true;
@@ -121,6 +130,17 @@
     }[c]));
   }
 
+  // Kleine Statusmeldung des Servers: nur Online/Offline je Boot
+  function applyStatus(staleMap) {
+    for (const [id, stale] of Object.entries(staleMap || {})) {
+      const entry = boats.get(id);
+      if (!entry || entry.data.stale === stale) continue;
+      entry.data.stale = stale;
+      if (entry.marker && entry.data.latest) entry.marker.setIcon(boatIcon(entry.data.color, stale));
+    }
+    renderList();
+  }
+
   function applySnapshot(trackers) {
     const ids = new Set(trackers.map((t) => t.id));
     for (const id of [...boats.keys()]) {
@@ -132,6 +152,7 @@
   async function loadInitial() {
     try {
       const res = await fetch('/api/trackers');
+      if (res.status === 401) { location.replace('/login.html?next=/index.html'); return; }
       const data = await res.json();
       applySnapshot(data.trackers || []);
     } catch (err) {
@@ -139,12 +160,14 @@
     }
   }
 
+  let opened = false;
   function connectWs() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/ws`);
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'snapshot') applySnapshot(msg.trackers);
+      else if (msg.type === 'status') applyStatus(msg.stale);
       else if (msg.type === 'position' || msg.type === 'tracker-created' || msg.type === 'tracker-updated') {
         upsertBoat(msg.tracker);
       } else if (msg.type === 'tracker-deleted') {
@@ -152,7 +175,17 @@
       }
     };
     ws.onclose = () => setTimeout(connectWs, 2000);
-    ws.onerror = () => ws.close();
+    // Verbindung abgelehnt (Anmeldung abgelaufen)? Dann zur Anmeldung.
+    ws.onopen = () => { opened = true; };
+    ws.onerror = () => {
+      if (!opened) {
+        // Nie verbunden: pruefen, ob die Anmeldung fehlt
+        fetch('/api/session').then((r) => r.json()).then((st) => {
+          if (st.enabled && !st.role) location.replace('/login.html?next=/index.html');
+        }).catch(() => {});
+      }
+      ws.close();
+    };
   }
 
   // Altersanzeige der Boote periodisch auffrischen, ohne auf neue Daten zu warten.

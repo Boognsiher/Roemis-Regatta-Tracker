@@ -188,3 +188,36 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .big-toggle.tracking { background: var(--danger); color: #fff; }
 .stats { font-size: 0.85rem; color: var(--muted); line-height: 1.7; }
+
+select {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.reg-box { width: 100%; max-width: 360px; text-align: left; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem; }
+.reg-box summary { cursor: pointer; font-weight: 600; margin-bottom: 0.5rem; }
+input[type=number], input[type=datetime-local], textarea {
+  padding: 0.5rem 0.6rem; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text); font-size: 0.95rem; font-family: inherit;
+}
+textarea { width: 100%; min-height: 110px; }
+.wide-wrap { max-width: 1000px; margin: 0 auto; padding: 1.25rem; }
+.row { display: flex; gap: 0.6rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.row .field { margin-bottom: 0; }
+table.results { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.results th, table.results td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
+table.results th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+table.results td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; background: var(--panel-2); border: 1px solid var(--border); }
+.badge.official { background: #3cb44b; color: #06131f; border-color: #3cb44b; }
+.badge.warn { background: #f58231; color: #06131f; border-color: #f58231; }
+.warn-text { color: #f58231; font-size: 0.78rem; }
+#line-map { height: 340px; border-radius: 8px; margin-bottom: 0.6rem; }
+.countdown { font-size: 2rem; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+.bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.bar > div { height: 100%; background: var(--accent); }

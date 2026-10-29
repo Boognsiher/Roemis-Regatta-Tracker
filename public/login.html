@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Regatta - Anmelden</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="admin-wrap" style="max-width:420px;margin-top:10vh">
+    <h1>🏁 Regatta Live-Tracker</h1>
+    <div class="card">
+      <p class="hint" style="margin-top:0">Bitte das Passwort eingeben, das du von der Wettfahrtleitung bekommen hast.</p>
+      <div class="field">
+        <label for="pw">Passwort</label>
+        <input type="password" id="pw" autocomplete="current-password" autofocus />
+      </div>
+      <button id="go">Anmelden</button>
+      <p id="msg" class="error-msg" style="display:none"></p>
+    </div>
+    <p class="hint">Verwaltung? <a href="/admin.html">Zum Admin-Bereich</a></p>
+  </div>
+<script src="/js/login.js"></script>
+</body>
+</html>

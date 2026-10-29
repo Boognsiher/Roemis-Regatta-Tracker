@@ -4,3 +4,6 @@ data/*.json
 !data/.gitkeep
 *.log
 .DS_Store
+data/history/
+.pio/
+firmware/include/secrets.h

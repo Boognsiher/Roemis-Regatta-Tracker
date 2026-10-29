@@ -1,7 +1,10 @@
 (() => {
   'use strict';
 
-  const SEND_INTERVAL_MS = 5000; // wie oft maximal an den Server gesendet wird
+  const SAMPLE_INTERVAL_MS = 2000; // GPS-Fixes werden hoechstens alle 2s aufgezeichnet
+  const FLUSH_INTERVAL_MS = 4000; // und gebuendelt an den Server gesendet
+  const MAX_QUEUE = 5000; // Puffer bei Funkloch (~3 h bei 2s-Takt)
+  const BATCH_SIZE = 500;
 
   const pathMatch = location.pathname.match(/\/t\/([^/]+)/);
   const id = pathMatch ? pathMatch[1] : null;
@@ -20,6 +23,7 @@
     speed: document.getElementById('stat-speed'),
     count: document.getElementById('stat-count'),
     battery: document.getElementById('stat-battery'),
+    queue: document.getElementById('stat-queue'),
     error: document.getElementById('setup-error')
   };
 
@@ -40,11 +44,11 @@
   let watchId = null;
   let sending = false;
   let sentCount = 0;
-  let lastSentAt = 0;
+  let lastFlushAt = 0;
   let wakeLock = null;
   let batteryLevel = null;
 
-  fetch(`/api/trackers/${id}`).then((r) => r.json()).then((t) => {
+  fetch(`/api/trackers/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).then((t) => {
     if (t && t.name) els.name.textContent = t.name;
   }).catch(() => {});
 
@@ -73,48 +77,73 @@
   }
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
-  async function sendPosition(pos) {
-    const coords = pos.coords;
-    const body = {
-      lat: coords.latitude,
-      lon: coords.longitude,
-      accuracy: coords.accuracy,
-      speed: coords.speed,
-      heading: coords.heading,
-      battery: batteryLevel,
-      ts: pos.timestamp
-    };
+  // Fixes werden zuerst gepuffert (auch in localStorage) und dann gebuendelt gesendet. Bei Funkloch
+  // bleiben sie im Puffer und werden nachgesendet - die Zeitstempel sind GPS-Zeit, also bleibt
+  // die Zeitmessung korrekt.
+  const queueKey = `regatta-tracker:${id}:queue`;
+  let queue = [];
+  try { queue = JSON.parse(localStorage.getItem(queueKey) || '[]'); } catch { queue = []; }
+  let flushing = false;
+  let lastSampleAt = 0;
+
+  function persistQueue() {
+    try { localStorage.setItem(queueKey, JSON.stringify(queue)); } catch { /* Speicher voll - egal */ }
+  }
+
+  function showQueue() {
+    els.queue.textContent = queue.length ? `${queue.length} wartend` : '0';
+  }
+
+  async function flush() {
+    if (flushing || !queue.length) return;
+    flushing = true;
+    const batch = queue.slice(0, BATCH_SIZE);
     try {
-      const res = await fetch(`/api/trackers/${id}/position`, {
+      const res = await fetch(`/api/trackers/${id}/positions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ positions: batch })
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);
       }
-      sentCount += 1;
+      queue.splice(0, batch.length);
+      persistQueue();
+      sentCount += batch.length;
       els.count.textContent = String(sentCount);
       setStatus('live', 'Live - sende Position');
     } catch (err) {
-      setStatus('error', `Fehler: ${err.message}`);
+      setStatus('error', `Kein Netz - ${queue.length} Positionen gepuffert`);
+    } finally {
+      flushing = false;
+      showQueue();
     }
   }
 
   function onPosition(pos) {
     const now = Date.now();
+    const c = pos.coords;
     els.age.textContent = 'gerade eben';
-    els.acc.textContent = pos.coords.accuracy != null ? `${Math.round(pos.coords.accuracy)} m` : '–';
-    els.speed.textContent = pos.coords.speed != null ? `${(pos.coords.speed * 1.94384).toFixed(1)} kn` : '–';
+    els.acc.textContent = c.accuracy != null ? `${Math.round(c.accuracy)} m` : '–';
+    els.speed.textContent = c.speed != null ? `${(c.speed * 1.94384).toFixed(1)} kn` : '–';
     els.battery.textContent = batteryLevel != null ? `${Math.round(batteryLevel * 100)}%` : '–';
 
-    if (now - lastSentAt >= SEND_INTERVAL_MS) {
-      lastSentAt = now;
-      sendPosition(pos);
+    if (now - lastSampleAt < SAMPLE_INTERVAL_MS) return;
+    lastSampleAt = now;
+    queue.push({
+      lat: c.latitude, lon: c.longitude, accuracy: c.accuracy, speed: c.speed,
+      heading: c.heading, battery: batteryLevel, ts: pos.timestamp
+    });
+    if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
+    persistQueue();
+    showQueue();
+    if (now - lastFlushAt >= FLUSH_INTERVAL_MS) {
+      lastFlushAt = now;
+      flush();
     }
   }
 
@@ -144,10 +173,45 @@
     els.btn.textContent = 'Start';
     els.btn.classList.remove('tracking');
     setStatus('', 'Angehalten');
+    flush();
     if (watchId != null) navigator.geolocation.clearWatch(watchId);
     watchId = null;
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
+
+  setInterval(() => { if (sending || queue.length) flush(); }, FLUSH_INTERVAL_MS);
+  window.addEventListener('online', flush);
+  showQueue();
+
+  // ---- Registrierung (Segelnummer, Steuermann, Yardstick-Klasse) ----
+  const reg = {
+    sail: document.getElementById('reg-sail'),
+    helm: document.getElementById('reg-helm'),
+    cls: document.getElementById('reg-class'),
+    btn: document.getElementById('reg-btn'),
+    msg: document.getElementById('reg-msg')
+  };
+  fetch('/api/regatta', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).then((data) => {
+    reg.cls.innerHTML = '<option value="">Klasse waehlen...</option>' + data.classes
+      .map((c) => `<option value="${c.id}">${c.name} (YS ${c.yardstick})</option>`).join('');
+    const mine = data.boats[id];
+    if (mine) {
+      reg.sail.value = mine.sailNo;
+      reg.helm.value = mine.helm;
+      reg.cls.value = mine.classId;
+      reg.msg.textContent = 'Registriert';
+    }
+  }).catch(() => {});
+  reg.btn.addEventListener('click', async () => {
+    reg.msg.textContent = '';
+    const res = await fetch(`/api/trackers/${id}/registration`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ sailNo: reg.sail.value, helm: reg.helm.value, classId: reg.cls.value })
+    });
+    const data = await res.json().catch(() => ({}));
+    reg.msg.textContent = res.ok ? 'Gespeichert' : (data.error || 'Fehler');
+  });
 
   els.btn.addEventListener('click', () => (sending ? stop() : start()));
 })();

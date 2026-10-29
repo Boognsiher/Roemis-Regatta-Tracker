@@ -35,9 +35,11 @@
     const res = await api('/api/admin/trackers');
     if (!res.ok) {
       adminToken = '';
+      if (res.status === 429) throw new Error('Zu viele Fehlversuche - bitte spaeter erneut versuchen.');
       throw new Error('Token abgelehnt - bitte pruefen.');
     }
     localStorage.setItem(STORAGE_KEY, token);
+    fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: token }) }).catch(() => {});
     els.loginCard.style.display = 'none';
     els.mainCard.style.display = 'block';
     const data = await res.json();
@@ -55,19 +57,30 @@
     }
     els.list.innerHTML = trackers.map((t) => `
       <div class="tracker-row" data-id="${t.id}">
-        <div class="qr-box"><img src="/api/admin/trackers/${t.id}/qrcode.png?adminToken=${encodeURIComponent(adminToken)}" alt="QR-Code" /></div>
+        <div class="qr-box"><img data-qr="${t.id}" alt="QR-Code" /></div>
         <div class="grow">
           <div style="font-weight:600">
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-right:6px"></span>
             ${escapeHtml(t.name)}
           </div>
+          <div style="margin:4px 0"><label style="display:inline">LoRa-Nr</label>
+            <input type="number" class="lora-id" min="1" max="250" value="${t.loraId ?? ''}" style="width:70px" /></div>
           <div class="mono" style="word-break:break-all">${trackerUrl(t)}</div>
         </div>
         <button class="secondary copy-btn">Link kopieren</button>
+        <button class="secondary fw-btn">Firmware-Config kopieren</button>
         <button class="secondary reset-btn">Spur loeschen</button>
         <button class="danger delete-btn">Loeschen</button>
       </div>
     `).join('');
+
+    // QR-Codes mit Token im Header laden (nicht in der URL) und als lokales Bild anzeigen
+    els.list.querySelectorAll('img[data-qr]').forEach(async (img) => {
+      try {
+        const res = await api(`/api/admin/trackers/${img.dataset.qr}/qrcode.png`);
+        if (res.ok) img.src = URL.createObjectURL(await res.blob());
+      } catch { /* QR optional */ }
+    });
 
     els.list.querySelectorAll('.copy-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -77,6 +90,31 @@
           btn.textContent = 'Kopiert!';
           setTimeout(() => (btn.textContent = 'Link kopieren'), 1500);
         });
+      });
+    });
+
+    els.list.querySelectorAll('.fw-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const t = trackers.find((x) => x.id === btn.closest('.tracker-row').dataset.id);
+        const text = `#define SERVER_URL     "${location.origin}"\n#define TRACKER_ID     ${t.loraId ?? 1}\n` +
+          `#define SERVER_ID      "${t.id}"\n#define TRACKER_TOKEN  "${t.token}"\n`;
+        navigator.clipboard.writeText(text).then(() => {
+          btn.textContent = 'Kopiert!';
+          setTimeout(() => (btn.textContent = 'Firmware-Config kopieren'), 1500);
+        });
+      });
+    });
+
+    els.list.querySelectorAll('.lora-id').forEach((inp) => {
+      inp.addEventListener('change', async () => {
+        const id = inp.closest('.tracker-row').dataset.id;
+        const res = await api(`/api/admin/trackers/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ loraId: inp.value === '' ? null : Number(inp.value) })
+        });
+        if (!res.ok) { alert((await res.json().catch(() => ({}))).error || 'Fehler'); }
+        refresh();
       });
     });
 
