@@ -43,9 +43,12 @@
     if (r.needsCourse) {
       $('notice').innerHTML = '<b>F&uuml;r diese Wettfahrt ist kein Kurs (Bojen) gespeichert</b> - die Live-Rangliste braucht den Kurs. Die Wettfahrtleitung kann ihn unter &laquo;Wettfahrtleitung &rarr; Kurs&raquo; zeichnen.';
     } else if (r.marks.length) {
+      const exact = r.marks.every((m) => m.exact);
       const found = r.marks.filter((m) => !m.approx).length;
-      $('notice').textContent = `Bojen: ${found} von ${r.marks.length} aus den Aufzeichnungen erkannt` + (found < r.marks.length ? ' (sonst gezeichnete Position)' : '') +
-        ` - Rundenlänge ca. ${Math.round(r.lapLenM)} m, ${r.race.laps} Runden`;
+      const lenTxt = ` - Rundenlänge ca. ${Math.round(r.lapLenM)} m, ${r.race.laps} Runden`;
+      $('notice').textContent = exact
+        ? `Bojen: exakte Positionen der Wettfahrtleitung (${r.marks.length})${lenTxt}`
+        : `Bojen: ${found} von ${r.marks.length} aus den Aufzeichnungen erkannt${found < r.marks.length ? ' (sonst gezeichnete Position)' : ''}${lenTxt}`;
     }
     const rows = r.entries.map((e) => {
       const lap = e.status === 'FIN' ? 'Ziel' : `Runde ${Math.min(e.lapsDone + 1, r.race.laps)}/${r.race.laps}`;

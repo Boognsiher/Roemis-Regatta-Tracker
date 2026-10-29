@@ -134,6 +134,18 @@ function detectCourse({ pl, race, boatsFixes, approxMarks, options = {} }) {
   const o = { ...DEFAULTS, ...options };
   const mid = { x: pl.a.x + pl.dx / 2, y: pl.a.y + pl.dy / 2 };
   const marks0 = approxMarks.map((m) => pl.proj(m));
+
+  // Exakte Positionen (von der Wettfahrtleitung eingegeben): nicht verfeinern, nur Rundungen je Boot erkennen
+  if (o.exact) {
+    const r = Math.min(o.radiusM, 0.4 * minSpacing([mid, ...marks0, mid]));
+    const perBoat = boatsFixes.map((fixes) => analyzeBoatCourse({ pl, fixes, race, marksXY: marks0, radiusM: r, o }));
+    return {
+      marks: approxMarks.map((m, k) => ({ lat: m.lat, lon: m.lon, n: 0, approx: false, exact: true, drawn: m })),
+      marksXY: marks0,
+      mid,
+      perBoat
+    };
+  }
   const r1 = Math.min(o.radiusM, 0.4 * minSpacing([mid, ...marks0, mid]));
   const run = (marks, radiusM) => boatsFixes.map((fixes) => analyzeBoatCourse({ pl, fixes, race, marksXY: marks, radiusM, o }));
 

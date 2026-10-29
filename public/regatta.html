@@ -51,15 +51,30 @@
         <div id="line-controls"></div>
         <div class="row"><button id="line-save">Linie speichern</button><span id="line-msg" class="hint"></span></div>
 
-        <h3 style="margin-bottom:0.3rem">Kurs (Bojen) - fuer die Live-Rangliste</h3>
-        <p class="hint">Zeichne eine <b>grobe Strecke fuer eine Runde</b>: die Bojen in Fahrtreihenfolge (ohne Start/Ziel-Linie).
-          Die genauen Bojenpositionen findet das System selbst aus den Aufzeichnungen der Boote (Wendepunkte); die Punkte dienen nur
-          dazu, die Bojen zu finden. Sie duerfen etwas daneben liegen (unter ca. 100 m), sollten aber mindestens ca. 300 m auseinander sein.</p>
-        <div id="course-list" class="hint"></div>
+        <h3 style="margin-bottom:0.3rem">Kurs (Bahnmarken) - fuer die Live-Rangliste</h3>
+        <p class="hint">Gib die Bahnmarken einer Runde <b>in Fahrtreihenfolge</b> an (ohne Start/Ziel-Linie): per <b>Koordinaten</b>, per
+          Klick auf die Karte oder per Import. Koordinaten kannst du in den ueblichen Schreibweisen eingeben
+          (<span class="mono">46.8419, 10.5130</span> &middot; <span class="mono">46&deg;50.514' N, 10&deg;30.780' E</span> &middot;
+          <span class="mono">N 46&deg;50'30.5" E 10&deg;30'46.8"</span>; Reihenfolge ohne Buchstaben: Breite, Laenge).
+          Mit <b>&laquo;Positionen sind exakt&raquo;</b> werden sie genau so verwendet. Ohne dieses Haekchen gelten sie nur als grobe
+          Hinweise, und das System sucht die genauen Positionen selbst aus den Aufzeichnungen der Boote (Wendepunkte; dann sollten die
+          Punkte unter ca. 100 m daneben und mindestens ca. 300 m auseinander liegen).</p>
+        <div id="course-list"></div>
         <div class="row">
+          <div class="field" style="flex:1;min-width:260px"><label for="course-coord">Boje per Koordinaten hinzufuegen</label>
+            <input type="text" id="course-coord" placeholder="46.8419, 10.5130" /></div>
+          <button id="course-coord-add" class="secondary">Hinzufuegen</button>
           <button id="course-add" class="secondary">Boje auf Karte setzen</button>
-          <button id="course-undo" class="secondary">Letzten Punkt entfernen</button>
+        </div>
+        <details style="margin-bottom:0.6rem"><summary class="hint" style="cursor:pointer">Mehrere Koordinaten auf einmal einfuegen</summary>
+          <textarea id="course-bulk" placeholder="eine Boje pro Zeile, in Fahrtreihenfolge&#10;46.8419, 10.5130&#10;46.8300, 10.5200"></textarea>
+          <button id="course-bulk-btn" class="secondary" style="margin-top:0.4rem">Uebernehmen (ersetzt die Liste)</button>
+        </details>
+        <div class="row">
+          <label style="margin:0"><input type="checkbox" id="course-exact" /> Positionen sind exakt (nicht aus den Logs verfeinern)</label>
+          <button id="course-undo" class="secondary">Letzte Boje entfernen</button>
           <button id="course-clear" class="secondary">Alle entfernen</button>
+          <button id="course-adopt" class="secondary" style="display:none">Erkannte Bojen uebernehmen</button>
           <div class="field"><label for="course-radius">Suchradius (m)</label><input type="number" id="course-radius" value="250" min="30" max="1000" style="width:90px" /></div>
         </div>
         <div class="row">
@@ -102,6 +117,7 @@
     </div>
   </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/coords.js"></script>
 <script src="js/regatta.js"></script>
 </body>
 </html>

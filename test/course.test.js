@@ -153,3 +153,18 @@ test('reine Vorbeifahrt weit weg von der Boje zaehlt nicht als Rundung', () => {
   const ev = course.detectRoundings(pts, [{ x: 0, y: 0 }], 0, Infinity, 250, course.DEFAULTS);
   assert.strictEqual(ev.length, 0);
 });
+
+test('exakte Bojenpositionen werden nicht aus den Logs veraendert', () => {
+  const boats = boatsAt(900);
+  const exactMarks = [pt(A.x + 5, A.y), pt(B.x, B.y - 5)];          // eingegebene Koordinaten (leicht neben der Boje: bleiben stehen)
+  const pl = timing.prepareLine(line);
+  const det = course.detectCourse({ pl, race, boatsFixes: boats.map((b) => b.fixes), approxMarks: exactMarks, options: { exact: true } });
+  assert.ok(det.marks.every((m) => m.exact && !m.approx));
+  const m0 = back(det.marks[0]);
+  assert.ok(Math.abs(m0.x - (A.x + 5)) < 0.01 && Math.abs(m0.y - A.y) < 0.01);        // unveraendert
+  // Die Live-Rangliste funktioniert mit exakten Marken (Rundungen werden trotzdem je Boot erkannt)
+  const now = gun + 600 * 1000;
+  const live = course.liveRanking({ line, race, approxMarks: exactMarks, boats: boats.map((b) => ({ ...b, fixes: b.fixes.filter((f) => f.ts <= now) })), now, options: { exact: true } });
+  assert.deepStrictEqual(live.entries.map((e) => e.trackerId), ['A', 'C', 'B']);
+  assert.ok(live.marks.every((m) => m.exact));
+});

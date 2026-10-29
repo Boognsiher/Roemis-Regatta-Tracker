@@ -105,3 +105,11 @@ test('Live-Berechnung ueber das Regatta-Modul (Historie -> Rangliste), Zwischens
   const b = regatta.getLive(race.id, race.startTs + 201 * 1000);   // innerhalb der 3 s: gleiche Daten
   assert.strictEqual(a, b);
 });
+
+test('Kurs mit exact-Flag wird gespeichert und in neue Wettfahrten uebernommen', () => {
+  const c = regatta.setCourse([pt(0, 150), pt(100, 300)], 200, true);
+  assert.strictEqual(c.exact, true);
+  const r = regatta.createRace({ name: 'exakt' });
+  assert.strictEqual(r.course.exact, true);
+  assert.strictEqual(regatta.setCourse([pt(0, 150)], 200).exact, false);
+});

@@ -137,13 +137,14 @@ function setLine(line) {
  * Grobe Bojen-Strecke (in Fahrtreihenfolge fuer EINE Runde, ohne Start/Ziel-Linie). Die genauen Positionen findet das
  * System selbst aus den Logs der Boote (Wendepunkte in der Naehe der gezeichneten Punkte).
  */
-function setCourse(marks, radiusM) {
+function setCourse(marks, radiusM, exact) {
   if (marks === null) { state.course = null; save(); return null; }
   if (!Array.isArray(marks) || marks.length < 1 || marks.length > 20 || !marks.every(isPoint)) {
     throw httpError(400, 'Kurs braucht 1-20 Punkte (je lat/lon)');
   }
   const r = Number.isFinite(radiusM) ? Math.min(1000, Math.max(30, radiusM)) : 250;
-  state.course = { marks: marks.map(point), radiusM: r };
+  // exact: Positionen sind von der Wettfahrtleitung eingegeben (genau) und werden NICHT aus den Logs verfeinert
+  state.course = { marks: marks.map(point), radiusM: r, exact: !!exact };
   save();
   return state.course;
 }
@@ -404,7 +405,7 @@ function computeLive(race, now = Date.now()) {
     approxMarks: race.course ? race.course.marks : [],
     boats,
     now,
-    options: race.course && race.course.radiusM ? { radiusM: race.course.radiusM } : {}
+    options: race.course ? { radiusM: race.course.radiusM || 250, exact: !!race.course.exact } : {}
   });
   const colors = Object.fromEntries(boats.map((b) => [b.trackerId, b.color]));
   ranking.entries.forEach((e) => { e.color = colors[e.trackerId]; });

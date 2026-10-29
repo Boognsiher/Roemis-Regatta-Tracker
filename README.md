@@ -72,12 +72,21 @@ Ablauf:
 
 ### Kurs, Live-Rangliste, nachtraegliche Wettfahrten und Export
 
-**Kurs (Bojen) zeichnen** (`/regatta.html`, Bereich 3): Auf der Karte die Bojen einer Runde **in Fahrtreihenfolge** anklicken (ohne
-Start/Ziel-Linie) oder eine Strecke als GPX/GeoJSON importieren (wird auf die Eckpunkte vereinfacht). Die Punkte muessen nur ungefaehr
-bei den Bojen liegen: Die genauen Positionen findet das System selbst aus den Aufzeichnungen (pro Boot der Punkt mit der staerksten
-Kursaenderung in der Naehe der gezeichneten Punkte, Median ueber alle Boote und Runden; auf der Karte blau). Es werden keine
-Wendewinkel verwendet. Hinweise: Gezeichnete Punkte sollten unter ca. 100 m von der Boje entfernt und mindestens ca. 300 m
-voneinander entfernt sein; sonst bleibt die gezeichnete Position stehen (die Rangliste funktioniert trotzdem, nur etwas ungenauer).
+**Kurs (Bahnmarken) und Linie eingeben** (`/regatta.html`, Bereich 3): Linie (A, B, Referenz) und Bojen einer Runde **in Fahrtreihenfolge**
+lassen sich per **Koordinaten** eingeben, per Klick auf die Karte setzen oder als GPX/GeoJSON importieren (Strecken werden auf die
+Eckpunkte vereinfacht). Koordinaten werden in den ueblichen Schreibweisen verstanden: `46.8419, 10.5130`, `46,8419; 10,5130`,
+`N 46.8419 E 10.5130`, `46°50.514' N, 10°30.780' E`, `46°50'30.5"N 10°30'46.8"E` (ohne Buchstaben: Breite, Laenge wie bei Google Maps).
+Mehrere Bojen koennen zeilenweise eingefuegt, verschoben und geloescht werden; ohne eigene Referenz-Tonne bestimmt die erste Boje die
+Kursseite der Linie.
+
+- **"Positionen sind exakt" (Standard bei eingegebenen Koordinaten):** Die Positionen werden genau so verwendet. Das System erkennt nur noch,
+  wann welches Boot welche Boje rundet.
+- **Ohne dieses Haekchen** gelten die Punkte als grobe Hinweise: Das System sucht die genauen Positionen selbst aus den Aufzeichnungen der Boote
+  (pro Boot der Punkt mit der staerksten Kursaenderung in der Naehe, Median ueber alle Boote und Runden; auf der Karte blau). Die Punkte sollten dann
+  unter ca. 100 m von der Boje entfernt und mindestens ca. 300 m voneinander entfernt sein; sonst bleibt die gezeichnete Position stehen.
+  Aus einem Bild geschaetzte Positionen sind dafuer zu ungenau - besser echte Koordinaten oder eine GPX-Datei.
+- **"Erkannte Bojen uebernehmen"** setzt die aus den Logs gefundenen Positionen als exakte Koordinaten (zum Nachpruefen und Korrigieren).
+
 Der Kurs wird beim Anlegen/Starten einer Wettfahrt in diese kopiert; fuer bestehende Wettfahrten "Linie & Kurs aktuell uebernehmen".
 
 **Live-Rangliste** (`/live.html`, aktualisiert sich alle 5 s): Fortschritt = Strecke entlang Linie -> Bojen -> Linie (je Runde).

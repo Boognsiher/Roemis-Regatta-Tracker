@@ -324,7 +324,7 @@ app.put('/api/admin/line', requireAdmin, (req, res) => {
 });
 // Kurs (grobe Bojen-Strecke) setzen oder loeschen (marks: null)
 app.put('/api/admin/course', requireAdmin, (req, res) => {
-  res.json({ course: regatta.setCourse(req.body && req.body.marks, req.body && req.body.radiusM) });
+  res.json({ course: regatta.setCourse(req.body && req.body.marks, req.body && req.body.radiusM, req.body && req.body.exact) });
 });
 app.post('/api/admin/races/:id/apply-geometry', requireAdmin, (req, res) => {
   res.json({ race: regatta.applyGeometry(req.params.id, req.body || {}) });
