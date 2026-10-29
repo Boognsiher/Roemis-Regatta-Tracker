@@ -142,16 +142,22 @@ function twoLapPath(s1, s2, f) {
 const bounceOpts = { startTs: 100000, laps: 2, minLapSeconds: 60 };
 const run = (path, opts = {}, until = 1000) => T.analyzeBoat(pl, pathFixes(path, 4, 100000, until), { ...bounceOpts, ...opts });
 
-test('Start der 1. Runde in der Verlaengerung (30 m hinter dem Ende) zaehlt; Start Runde 2 und beide Ziele zwischen den Marken -> 2 Runden', () => {
+test('Standard: auch der Start muss zwischen den Marken liegen (Verlaengerung zaehlt nicht)', () => {
   const r = run(twoLapPath(80, 0, 0));
+  assert.strictEqual(r.status, 'DNF');
+  assert.strictEqual(r.laps.length, 1);          // Start Runde 1 ungueltig -> erst der 2. Aufstieg gilt als Start, nur 1 Runde bis zum Ende
+});
+
+test('Optional: Start der 1. Runde in der Verlaengerung (30 m hinter dem Ende) zaehlt; Start Runde 2 und beide Ziele zwischen den Marken -> 2 Runden', () => {
+  const r = run(twoLapPath(80, 0, 0), { startOnExtension: true });
   assert.strictEqual(r.status, 'FIN');
   assert.strictEqual(r.laps.length, 2);
   assert.ok(r.laps[0].lapSeconds > 100 && r.laps[1].lapSeconds > 100);
   assert.deepStrictEqual(r.warnings, []);
 });
 
-test('Start der 2. Runde in der Verlaengerung zaehlt NICHT: Runde 2 kann nicht enden, Warnung nennt die Runde', () => {
-  const r = run(twoLapPath(80, 80, 0));
+test('Start der 2. Runde in der Verlaengerung zaehlt NICHT (auch wenn die Verlaengerung erlaubt ist): Warnung nennt die Runde', () => {
+  const r = run(twoLapPath(80, 80, 0), { startOnExtension: true });
   assert.strictEqual(r.status, 'DNF');
   assert.strictEqual(r.laps.length, 1);                              // Runde 1 ist gueltig
   assert.ok(r.warnings.some((w) => /Start der Runde 2 in der Verlaengerung/.test(w) && /30 m/.test(w)), r.warnings.join(' | '));
@@ -165,8 +171,8 @@ test('Ziel (Ende der Runde) ausserhalb der Marken zaehlt NICHT, mit Warnung', ()
 });
 
 test('Verlaengerung nur bis 400 m und nur, wenn die Wettfahrt es erlaubt', () => {
-  assert.strictEqual(run(twoLapPath(600, 0, 0), {}, 1300).status, 'DNF');                 // zu weit weg
-  assert.strictEqual(run(twoLapPath(80, 0, 0), { startOnExtension: false }).status, 'DNF'); // abgeschaltet
+  assert.strictEqual(run(twoLapPath(600, 0, 0), { startOnExtension: true }, 1300).status, 'DNF');   // zu weit weg
+  assert.strictEqual(run(twoLapPath(80, 0, 0), { startOnExtension: false }).status, 'DNF'); // abgeschaltet (Standard)
   assert.strictEqual(run(twoLapPath(80, 0, 0), { startOnExtension: true }).status, 'FIN');
 });
 
@@ -181,4 +187,44 @@ test('Rundkurs-Modus nutzt die Verlaengerung NICHT (jeder Durchgang muss zwische
   const r = T.analyzeBoat(pl, fixes, { ...bounceOpts, lapMode: 'loop' });
   assert.strictEqual(r.status, 'DNF');
   assert.strictEqual(r.laps.length, 0);
+});
+
+
+// ---- Rundkurs: Verlaengerungs-Durchgaenge als Runden-Anzeiger ----
+// LOOP: Aufstieg bei x = 0 (zwischen den Marken), Abstieg bei x = 300 (250 m neben dem Ende: Verlaengerung der Linie)
+const loopOpts = { startTs: 100000, laps: 2, minLapSeconds: 60, lapMode: 'loop' };
+
+test('Rundkurs: jeder Abstieg ueber die Verlaengerung wird gezaehlt, Runde stimmt mit den Durchgaengen ueberein', () => {
+  const full = T.analyzeBoat(pl, pathFixes(LOOP, 4, 100000, 1200), loopOpts);
+  assert.strictEqual(full.status, 'FIN');
+  assert.deepStrictEqual([full.lapInfo.completed, full.lapInfo.extensionPasses, full.lapInfo.missingPasses, full.lapInfo.uncertain, full.lapInfo.current], [2, 2, 0, false, 2]);
+  // mitten in Runde 1, nach dem Abstieg bei x = 300 (t ca. 25 + 700/4 + 300/4 + 700/4 = ~450 s): Runde 1, ein Verlaengerungs-Durchgang
+  const mid = T.analyzeBoat(pl, pathFixes(LOOP, 4, 100000, 460), loopOpts);
+  assert.strictEqual(mid.lapInfo.extensionPasses, 1);
+  assert.strictEqual(mid.lapInfo.current, 1);
+  assert.strictEqual(mid.lapInfo.uncertain, false);
+  // kurz nach dem Ende der Runde 1 (Durchgang zwischen den Marken bei ca. 525 s): Runde 2
+  const lap2 = T.analyzeBoat(pl, pathFixes(LOOP, 4, 100000, 540), loopOpts);
+  assert.strictEqual(lap2.lapInfo.completed, 1);
+  assert.strictEqual(lap2.lapInfo.current, 2);
+});
+
+test('Rundkurs: fehlt ein Durchgang zwischen den Marken, zeigt die Verlaengerung die Runde an und es gibt eine Warnung', () => {
+  // 2. Aufstieg bei x = 80 (30 m neben dem Ende) statt zwischen den Marken -> Ende der Runde 1 zaehlt nicht
+  const path = [[0, -100], [0, 600], [300, 600], [300, -100], [80, -100], [80, 600], [300, 600], [300, -100], [0, -100], [0, 300]];
+  const r = T.analyzeBoat(pl, pathFixes(path, 4, 100000, 1200), loopOpts);
+  assert.strictEqual(r.status, 'DNF');
+  assert.strictEqual(r.laps.length, 1);                      // nur der Durchgang am Schluss (x = 0) zaehlt als Ende der Runde 1
+  assert.strictEqual(r.lapInfo.extensionPasses, 2);
+  assert.strictEqual(r.lapInfo.missingPasses, 1);            // zwei Abstiege ohne gueltigen Durchgang dazwischen
+  assert.strictEqual(r.lapInfo.uncertain, true);
+  assert.strictEqual(r.lapInfo.current, 2);                  // 1 gezaehlt + 1 fehlend + 1, begrenzt auf 2 Runden
+  assert.ok(r.warnings.some((w) => /zeigen Runde 2 an/.test(w) && /fehlen/.test(w)), r.warnings.join(' | '));
+});
+
+test('Rundkurs mit erlaubtem Start in der Verlaengerung: nur der erste Durchgang, spaetere zaehlen nicht als Rundenende', () => {
+  const path = [[80, -100], [80, 600], [300, 600], [300, -100], [80, -100], [80, 600], [300, 600], [300, -100], [0, -100], [0, 300]];
+  const r = T.analyzeBoat(pl, pathFixes(path, 4, 100000, 1200), { ...loopOpts, startOnExtension: true });
+  assert.strictEqual(r.status, 'DNF');                       // 2. Durchgang bei x = 80 zaehlt nicht
+  assert.ok(r.warnings.some((w) => /zaehlt nicht fuer das Ende der Runde 1/.test(w)), r.warnings.join(' | '));
 });

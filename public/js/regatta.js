@@ -407,9 +407,9 @@
         <div class="field"><label>Runden</label><input type="number" class="rc-laps" min="1" max="10" value="${r.laps}" style="width:70px" /></div>
         <div class="field"><label>Zielschluss (Min. nach Start)</label><input type="number" class="rc-cutoff" min="10" max="1440" value="${r.cutoffMinutes}" style="width:90px" /></div>
         <div class="field"><label>Linie pro Runde</label>
-          <select class="rc-mode" style="width:auto"><option value="bounce" ${r.lapMode === 'loop' ? '' : 'selected'}>2x kreuzen (hin/zurueck)</option>
-            <option value="loop" ${r.lapMode === 'loop' ? 'selected' : ''}>1x, gleiche Richtung (Rundkurs)</option></select></div>
-        <label style="margin:0"><input type="checkbox" class="rc-ext" ${r.startOnExtension === false ? '' : 'checked'} /> Start der 1. Runde auch in der Verlaengerung der Linie</label>
+          <select class="rc-mode" style="width:auto"><option value="loop" ${r.lapMode === 'loop' ? 'selected' : ''}>immer gleiche Richtung (Rundkurs)</option>
+            <option value="bounce" ${r.lapMode === 'loop' ? '' : 'selected'}>hin und zurueck (gegenlaeufig)</option></select></div>
+        <label style="margin:0"><input type="checkbox" class="rc-ext" ${r.startOnExtension === true ? 'checked' : ''} /> Erster Start darf in der Verlaengerung der Linie liegen</label>
         <button class="secondary rc-save">Speichern</button>
         <button class="secondary rc-geo" title="Setzt Linie und Kurs dieser Wettfahrt auf die aktuell gespeicherten Werte">Linie &amp; Kurs aktuell uebernehmen</button>
         ${r.hasLine ? '' : '<span class="warn-text">keine Linie gespeichert</span>'}

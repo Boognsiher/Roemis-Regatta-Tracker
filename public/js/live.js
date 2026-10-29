@@ -51,7 +51,7 @@
         : `Bojen: ${found} von ${r.marks.length} aus den Aufzeichnungen erkannt${found < r.marks.length ? ' (sonst gezeichnete Position)' : ''}${lenTxt}`;
     }
     const rows = r.entries.map((e) => {
-      const lap = e.status === 'FIN' ? 'Ziel' : `Runde ${Math.min(e.lapsDone + 1, r.race.laps)}/${r.race.laps}`;
+      const lap = e.status === 'FIN' ? 'Ziel' : `Runde ${e.lapNow || Math.min(e.lapsDone + 1, r.race.laps)}/${r.race.laps}${e.lapUncertain ? ' ⚠' : ''}`;
       const time = e.status === 'FIN' ? `<b>${fmtDur(e.correctedSec)}</b>` : (e.projectedCorrectedSec != null ? `&asymp; ${fmtDur(e.projectedCorrectedSec)}` : '–');
       const status = e.status === 'PRESTART' ? 'Vorstart' : e.status === 'NODATA' ? 'keine Daten' : '';
       const old = e.lastFixAgeSec != null && e.lastFixAgeSec > 30 && e.status !== 'FIN' ? `<div class="warn-text">Daten ${Math.round(e.lastFixAgeSec)} s alt</div>` : '';

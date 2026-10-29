@@ -135,7 +135,7 @@ function detectRoundings(pts, marks, tFrom, tTo, radiusM, o, mid) {
 /** Auswertung eines Boots gegen die Bojen: Runden (Linie) und Rundungen je Runde. */
 function analyzeBoatCourse({ pl, fixes, race, marksXY, radiusM, o }) {
   const norm = timing.normalizeFixes(fixes);
-  const analysis = timing.analyzeBoat(pl, norm, { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: race.endTs ?? null, lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension !== false });
+  const analysis = timing.analyzeBoat(pl, norm, { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: race.endTs ?? null, lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension === true });
   const pts = toXY(pl, norm);
   const lastT = pts.length ? pts[pts.length - 1].t : race.startTs;
   const mid = { x: pl.a.x + pl.dx / 2, y: pl.a.y + pl.dy / 2 };
@@ -280,7 +280,7 @@ function liveRanking({ line, race, approxMarks, boats, now, options = {} }) {
     const { analysis, pts, roundings } = det.perBoat[idx];
     const e = {
       trackerId: b.trackerId, name: b.name, sailNo: b.sailNo, helm: b.helm, className: b.className, yardstick: b.yardstick,
-      status: 'NODATA', lapsDone: analysis.laps.length, marksDone: 0, progressM: 0, progressPct: 0, elapsedSec: null,
+      status: 'NODATA', lapsDone: analysis.laps.length, lapNow: analysis.laps.length + 1, lapUncertain: false, marksDone: 0, progressM: 0, progressPct: 0, elapsedSec: null,
       correctedSec: null, projectedCorrectedSec: null, rank: null, gapCorrectedSec: null, gapM: null, speedKn: null, lastFixAgeSec: null
     };
     if (!pts.length) return e;
@@ -297,8 +297,12 @@ function liveRanking({ line, race, approxMarks, boats, now, options = {} }) {
       e.status = 'PRESTART';
     } else {
       e.status = 'RACING';
-      const lap = Math.min(analysis.laps.length, race.laps - 1);
-      const done = (roundings[lap] || []).length;
+      // Runde: gezaehlte Durchgaenge zwischen den Marken, bei Widerspruch gelten die Verlaengerungs-Durchgaenge (zeigen die Runde an)
+      const lapNow = Math.min(race.laps, Math.max(analysis.laps.length + 1, (analysis.lapInfo && analysis.lapInfo.current) || 1));
+      const lap = lapNow - 1;
+      e.lapNow = lapNow;
+      e.lapUncertain = !!(analysis.lapInfo && analysis.lapInfo.uncertain);
+      const done = lap === analysis.laps.length ? (roundings[lap] || []).length : 0;
       e.marksDone = done;
       e.progressM = progressMeters(geo, lap, done, last);
       e.elapsedSec = (last.t - race.startTs) / 1000;

@@ -227,3 +227,69 @@ test('Boot faehrt AUSSEN am Tor vorbei: Tor wird nicht gezaehlt, aber die Runden
   assert.ok(det.perBoat.every((b) => b.analysis.status === 'FIN'));                    // Wertung haengt nicht von den Marken ab
   void narrow;
 });
+
+// ---- Kurs wie in der Skizze der Wettfahrtleitung: Linie in der Mitte, Boje 1 oben, Boje 2 unten ----
+// Runde: durch die Linie nach Norden (zwischen den Marken) -> Boje 1 -> ausserhalb der Linie nach Sueden (Verlaengerung) -> Boje 2 -> zurueck zur Linie
+const SK_B1 = { x: 0, y: 500 };
+const SK_B2 = { x: 100, y: -450 };
+const SK_LAP = [[0, -150], [SK_B1.x, SK_B1.y], [260, 250], [260, -250], [SK_B2.x, SK_B2.y], [0, -150]];   // Abstieg bei x = 260 (210 m neben der Linie)
+function skPath(laps) {
+  const p = [[0, -150]];
+  for (let l = 0; l < laps; l += 1) SK_LAP.slice(1).forEach((q) => p.push(q));
+  p.push([0, 200]);                                            // nach dem Ziel noch ein Stueck weiter
+  return p;
+}
+function skSim(v, seed, until, sigma = 3) {
+  const noise = rng(seed);
+  const path = skPath(2);
+  const seg = []; let total = 0;
+  for (let i = 1; i < path.length; i += 1) { const d = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]); seg.push(d); total += d; }
+  const out = [];
+  for (let t = -60; t <= until; t += 1) {
+    let dd = Math.max(0, Math.min(total, t * v)); let i = 0;
+    while (i < seg.length - 1 && dd > seg[i]) { dd -= seg[i]; i += 1; }
+    const f = seg[i] ? dd / seg[i] : 0;
+    out.push({ ...pt(path[i][0] + (path[i + 1][0] - path[i][0]) * f + noise() * sigma, path[i][1] + (path[i + 1][1] - path[i][1]) * f + noise() * sigma), ts: gun + t * 1000 });
+  }
+  return out;
+}
+const skLine = { a: pt(-50, 0), b: pt(50, 0), mark: pt(SK_B1.x, SK_B1.y) };
+const skRace = { startTs: gun, laps: 2, minLapSeconds: 120, endTs: gun + 3 * 3600e3, lapMode: 'loop' };
+const skMarks = [pt(SK_B1.x + 40, SK_B1.y - 30), pt(SK_B2.x - 50, SK_B2.y + 40)];   // grob gezeichnet
+const skBoats = (until) => [
+  { trackerId: 'A', name: 'Alpha', yardstick: 100, v: 4.0, seed: 1 },
+  { trackerId: 'B', name: 'Bravo', yardstick: 90, v: 3.6, seed: 2 },
+  { trackerId: 'C', name: 'Charlie', yardstick: 120, v: 3.0, seed: 3 }
+].map((b) => ({ ...b, fixes: skSim(b.v, b.seed, until) }));
+
+test('Skizzen-Kurs: 3 Durchgaenge in dieselbe Richtung, Abstieg ausserhalb der Linie, Bojen 1 und 2 pro Runde erkannt', () => {
+  const boats = skBoats(2400);
+  const pl = timing.prepareLine(skLine);
+  const det = course.detectCourse({ pl, race: skRace, boatsFixes: boats.map((b) => b.fixes), approxMarks: skMarks });
+  const m1 = back(det.marks[0]); const m2 = back(det.marks[1]);
+  assert.ok(Math.hypot(m1.x - SK_B1.x, m1.y - SK_B1.y) < 20, JSON.stringify(m1));
+  assert.ok(Math.hypot(m2.x - SK_B2.x, m2.y - SK_B2.y) < 20, JSON.stringify(m2));
+  det.perBoat.forEach((b) => {
+    assert.strictEqual(b.analysis.status, 'FIN');
+    assert.strictEqual(b.analysis.laps.length, 2);
+    assert.deepStrictEqual([b.analysis.lapInfo.extensionPasses, b.analysis.lapInfo.missingPasses, b.analysis.lapInfo.uncertain], [2, 0, false]);
+    b.roundings.forEach((lap) => assert.strictEqual(lap.length, 2));       // je Runde beide Bojen
+  });
+});
+
+test('Skizzen-Kurs: Live-Rangliste folgt Runde und Yardstick (A, C, B), Runde 2 erst nach dem Durchgang zwischen den Marken', () => {
+  const final = course.liveRanking({ line: skLine, race: skRace, approxMarks: skMarks, boats: skBoats(2400), now: gun + 2400 * 1000 });
+  assert.ok(final.entries.every((e) => e.status === 'FIN'));
+  assert.deepStrictEqual(final.entries.map((e) => e.trackerId), ['A', 'C', 'B']);
+  // Boot A: Rundenlaenge ca. 2575 m bei 4 m/s -> Durchgang Ende Runde 1 bei ca. 650 s; Abstieg ueber die Verlaengerung davor
+  const at = (sec) => course.liveRanking({ line: skLine, race: skRace, approxMarks: skMarks,
+    boats: [{ ...skBoats(sec)[0], fixes: skSim(4, 1, sec) }], now: gun + sec * 1000 }).entries[0];
+  const early = at(120);
+  assert.deepStrictEqual([early.lapNow, early.status], [1, 'RACING']);
+  const afterDescent = at(300);                      // nach dem Abstieg in Runde 1, vor dem Durchgang zwischen den Marken
+  assert.strictEqual(afterDescent.lapNow, 1);
+  const lap2 = at(700);                              // nach dem Ende der Runde 1
+  assert.strictEqual(lap2.lapNow, 2);
+  assert.strictEqual(lap2.lapUncertain, false);
+  assert.ok(lap2.progressM > afterDescent.progressM);
+});

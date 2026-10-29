@@ -101,10 +101,10 @@
           <div class="field"><label for="race-cutoff">Zielschluss (Min.)</label><input type="number" id="race-cutoff" value="180" min="10" max="1440" style="width:90px" /></div>
           <div class="field"><label for="race-mode">Linie pro Runde</label>
             <select id="race-mode" style="width:auto">
-              <option value="bounce">2x kreuzen (hin = Start, zurueck = Ende der Runde)</option>
-              <option value="loop">1x kreuzen, immer gleiche Richtung (Rundkurs)</option>
+              <option value="loop">immer in dieselbe Richtung (Richtung Boje 1) - Rundkurs</option>
+              <option value="bounce">hin und zurueck (2x pro Runde, gegenlaeufig)</option>
             </select></div>
-          <label style="margin:0 0.6rem 0 0"><input type="checkbox" id="race-ext" checked /> Start der 1. Runde auch in der Verlaengerung der Linie</label>
+          <label style="margin:0 0.6rem 0 0"><input type="checkbox" id="race-ext" /> Erster Start darf in der Verlaengerung der Linie liegen</label>
           <button id="race-create">Wettfahrt anlegen</button>
         </div>
         <p id="race-error" class="error-msg" style="display:none"></p>

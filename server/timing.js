@@ -142,18 +142,59 @@ function normalizeFixes(fixes) {
  * Rueckgabe: { status: 'FIN'|'DNF'|'DNS', laps:[{n,ts,lapSeconds}], finishTs, elapsedSec,
  *              uncertaintyMs, warnings:[] }
  */
+/**
+ * Auf welcher Runde ist das Boot? Rundkurs: Pro Runde gibt es genau einen Abstieg ausserhalb der Marken ueber die Verlaengerung der
+ * Linie (von der Kursseite weg) und danach einen gueltigen Durchgang zwischen den Marken (Ende der Runde / Ziel). Die Reihenfolge
+ * muss also abwechseln: Start, Abstieg, Durchgang, Abstieg, Durchgang, ... Folgen zwei Abstiege ohne gueltigen Durchgang dazwischen,
+ * fehlt ein Durchgang zwischen den Marken (uncertain); die Runde wird dann aus den Abstiegen abgeleitet.
+ */
+function lapProgress({ lapMode, outside, laps, totalLaps, startTs, endTs, startCrossingTs, minLapSeconds }) {
+  const completed = laps.length;
+  if (lapMode !== 'loop') return { current: Math.min(totalLaps, completed + 1), completed, extensionPasses: 0, missingPasses: 0, uncertain: false };
+  const gap = Math.max(30, (minLapSeconds || 120) / 2) * 1000;
+  const valid = [];
+  if (startCrossingTs != null) valid.push({ ts: startCrossingTs, kind: 'V' });
+  laps.forEach((l) => valid.push({ ts: l.ts, kind: 'V' }));
+  let n = 0;
+  let last = -Infinity;
+  const descents = [];
+  for (const o of outside) {
+    if (o.dir !== 'finish' || o.ts < (startCrossingTs ?? startTs) || (endTs != null && o.ts > endTs)) continue;
+    if (o.ts - last < gap) continue;                 // Flattern/Kreuzen direkt nach einem Durchgang nicht mehrfach zaehlen
+    last = o.ts;
+    n += 1;
+    descents.push({ ts: o.ts, kind: 'D' });
+  }
+  let missing = 0;
+  if (startCrossingTs != null) {
+    let expect = 'D';                                 // nach einem gueltigen Durchgang kommt der naechste Abstieg
+    for (const ev of valid.concat(descents).sort((p, q) => p.ts - q.ts)) {
+      if (ev.kind === 'V') expect = 'D';
+      else if (expect === 'D') expect = 'V';          // erwarteter Abstieg
+      else missing += 1;                              // zweiter Abstieg ohne gueltigen Durchgang dazwischen
+    }
+  }
+  return {
+    current: Math.min(totalLaps, completed + missing + 1),
+    completed,
+    extensionPasses: n,
+    missingPasses: missing,
+    uncertain: missing > 0
+  };
+}
+
 const START_EXTENSION_MAX_M = 400;   // so weit hinter den Marken darf der Start der 1. Runde in der Verlaengerung der Linie liegen
 
-function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null, lapMode = 'bounce', startOnExtension = true }) {
+function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null, lapMode = 'bounce', startOnExtension = false }) {
   const warnings = [];
   const fixes = normalizeFixes(fixesRaw);
   if (!fixes.length || fixes[fixes.length - 1].ts < startTs) {
-    return { status: 'DNS', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: ['Keine GPS-Daten ab dem Start'] };
+    return { status: 'DNS', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: ['Keine GPS-Daten ab dem Start'], lapInfo: { current: 1, completed: 0, extensionPasses: 0, missingPasses: 0, uncertain: false } };
   }
 
   // Zielschluss: Durchgaenge nach endTs zaehlen nicht (z.B. wenn danach die naechste Wettfahrt gesegelt wurde)
   const outside = [];
-  const startExtensionM = lapMode === 'bounce' && startOnExtension ? START_EXTENSION_MAX_M : 0;
+  const startExtensionM = startOnExtension ? START_EXTENSION_MAX_M : 0;
   const crossings = findCrossings(pl, fixes, outside, { startExtensionM }).filter((c) => endTs == null || c.ts <= endTs);
   const atGun = positionAt(fixes, startTs);
   const sideAtGun = atGun ? sideOf(pl, atGun) : -1;
@@ -173,22 +214,26 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
       if (c.dir === 'finish') returnedFromOcs = true;
       continue;
     }
-    // Verlaengerung der Linie gilt NUR fuer den Start der 1. Runde. Jeder weitere Start-Durchgang (Runde 2, ...) muss
-    // zwischen den Marken liegen; das Ziel (Ende einer Runde) sowieso.
-    if (c.dir === 'start' && c.onExtension && laps.length > 0) {
-      const lapNo = laps.length + 1;
-      if (!extWarned.has(lapNo)) {
-        extWarned.add(lapNo);
-        warnings.push(`Start der Runde ${lapNo} in der Verlaengerung der Linie (${Math.round(c.missM)} m neben der Marke) - zaehlt nicht, der Start jeder weiteren Runde muss zwischen den Marken liegen`);
-      }
-      continue;
-    }
+    // Start und Ziel muessen zwischen den Marken durchfahren werden. Nur wenn "Start in der Verlaengerung" eingeschaltet ist,
+    // darf der allererste Start-Durchgang (Runde 1) in der Verlaengerung liegen - nie ein weiterer Start oder ein Ziel.
+    const warnExt = (text) => {
+      const key = `${laps.length}:${text}`;
+      if (!extWarned.has(key)) { extWarned.add(key); warnings.push(text); }
+    };
     if (lapMode === 'loop') {
-      // Rundkurs: die Linie wird jede Runde in DIESELBE Richtung gekreuzt (Vorstartseite -> Kursseite).
-      // Erster Durchgang = Start, jeder weitere = Ende einer Runde.
+      // Rundkurs: die Linie wird in jeder Runde in DIESELBE Richtung gekreuzt (Vorstartseite -> Kursseite).
+      // 1. Durchgang = Start, jeder weitere = Ende einer Runde (der letzte = Ziel).
       if (c.dir !== 'start') continue;
       if (!started) { started = true; startCrossingTs = c.ts; continue; }
+      if (c.onExtension) {
+        warnExt(`Durchgang in der Verlaengerung der Linie (${Math.round(c.missM)} m neben der Marke) zaehlt nicht fuer das Ende der Runde ${laps.length + 1} - er muss zwischen den Marken liegen`);
+        continue;
+      }
     } else if (c.dir === 'start') {
+      if (c.onExtension && laps.length > 0) {
+        warnExt(`Start der Runde ${laps.length + 1} in der Verlaengerung der Linie (${Math.round(c.missM)} m neben der Marke) - zaehlt nicht, er muss zwischen den Marken liegen`);
+        continue;
+      }
       if (!started) startCrossingTs = startCrossingTs ?? c.ts;
       started = true;
       continue;
@@ -213,6 +258,13 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
     if (laps.length === totalLaps) break;
   }
 
+  // Runden-Anzeiger: Beim Abstieg von der letzten zur ersten Seite faehrt das Boot ausserhalb der Marken ueber die Verlaengerung der Linie
+  // (Rundkurs, Richtung weg von der Kursseite). Jeder solche Durchgang gehoert zu einer Runde und zeigt, auf welcher Runde das Boot ist.
+  const lapInfo = lapProgress({ lapMode, outside, laps, totalLaps, startTs, endTs, startCrossingTs, minLapSeconds });
+  if (lapInfo.uncertain) {
+    warnings.push(`Die Durchgaenge ueber die Verlaengerung der Linie zeigen Runde ${lapInfo.current} an, aber ${lapInfo.missingPasses} Durchgang/Durchgaenge zwischen den Marken (Start oder Ende einer Runde) fehlen - bitte pruefen`);
+  }
+
   if (laps.length < totalLaps) {
     const out = outside.filter((o) => o.ts >= startTs && (endTs == null || o.ts <= endTs));
     const extra = [`Nur ${laps.length} von ${totalLaps} Runden erkannt`];
@@ -221,7 +273,7 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
       const nFinish = out.filter((o) => o.dir === 'finish').length;
       extra.push(`${out.length} Durchgang/Durchgaenge ausserhalb der Linien-Marken (nur ${Math.round(nearest)} m daneben${nFinish ? `, davon ${nFinish} beim Zieldurchgang, der zwischen den Marken liegen muss` : ''}) - Linie zu kurz oder Boot ausserhalb der Marken?`);
     }
-    return { status: 'DNF', laps, finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: warnings.concat(extra) };
+    return { status: 'DNF', laps, finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: warnings.concat(extra), lapInfo };
   }
 
   const fin = laps[laps.length - 1];
@@ -234,7 +286,8 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
     finishTs: fin.ts,
     elapsedSec: (fin.ts - startTs) / 1000,
     uncertaintyMs: fin.uncertaintyMs,
-    warnings
+    warnings,
+    lapInfo: { ...lapInfo, current: totalLaps }
   };
 }
 

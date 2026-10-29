@@ -94,16 +94,18 @@ Der Kurs steht **einmal** fuer eine Runde; die Wettfahrt faehrt ihn so oft ab, w
 
 **Wichtig - Start, Ziel und Runden haengen nur an der Linie**, nicht an den Bojen: Die offizielle Zeit (Start, Ende der letzten Runde) wird
 ausschliesslich aus den Durchgaengen durch die Start-/Ziellinie bestimmt. Bojen und Tore beeinflussen nur die Live-Rangliste (Schaetzung);
-eine nicht erkannte Boje aendert das Ergebnis nicht. Wie die Linie pro Runde gezaehlt wird, stellst du pro Wettfahrt ein:
-- **2x kreuzen (Standard):** Start = Durchgang auf die Kursseite (Richtung Boje 1), Ende einer Runde = Durchgang zurueck. Die naechste Runde beginnt
-  wieder mit einem Durchgang auf die Kursseite. Das Ziel = Ende der letzten Runde. Es gilt:
-  - Nur der **Start der 1. Runde** darf auch in der **Verlaengerung der Linie** liegen (bis ca. 400 m hinter den Marken; abschaltbar pro Wettfahrt).
-  - Der **Start jeder weiteren Runde** (Runde 2, ...) und **jeder Ziel-/Rundenende-Durchgang** muessen **zwischen Zielboot und Zielboje** liegen
-    (3 m Toleranz fuer GPS-Fehler). Liegt ein Durchgang daneben, steht im Ergebnis eine Warnung mit Runde und Abstand, und er zaehlt nicht.
-- **1x kreuzen, gleiche Richtung (Rundkurs):** Jede Runde fuehrt in derselben Richtung durch die Linie. Der erste Durchgang ist der Start, jeder
-  weitere beendet eine Runde (bei 2 Runden also der 3. Durchgang). Die Referenz-Tonne muss auf der Seite liegen, in die die Boote durch die Linie fahren.
-- GPS-Zittern direkt nach einem Durchgang zaehlt nicht (Mindestrundenzeit). Faellt eine Runde aus, nennt die Warnung den Grund, z.B. "Durchgang
-  ausserhalb der Linien-Marken (nur 20 m daneben) - Linie zu kurz?". Einzelne Zeiten und Status lassen sich im Ergebnis von Hand korrigieren.
+eine nicht erkannte Boje aendert das Ergebnis nicht. Wie die Linie pro Runde gezaehlt wird, stellst du pro Wettfahrt ein. **Start und Ziel zaehlen nur, wenn das Boot zwischen Zielboot und
+Zielboje durchfaehrt** (3 m Toleranz fuer GPS-Fehler); sonst zaehlt der Durchgang nicht, und im Ergebnis steht eine Warnung mit Runde und Abstand.
+- **Immer in dieselbe Richtung (Rundkurs, Standard):** Die Boote fahren in jeder Runde durch die Linie Richtung Boje 1 und kommen von Boje 1
+  ueber die Seite (ausserhalb der Marken) zu Boje 2 und von dort wieder zur Linie. Der erste Durchgang ist der Start, jeder weitere beendet eine
+  Runde, der letzte (bei 2 Runden der 3.) ist das Ziel. Die Referenz-Tonne der Linie muss auf der Seite von Boje 1 liegen.
+  **Runden-Anzeiger:** Der Abstieg ausserhalb der Marken (Kreuzen der Verlaengerung der Linie) zeigt, auf welcher Runde das Boot ist. Folgen zwei
+  solche Abstiege ohne gueltigen Durchgang dazwischen, fehlt ein Durchgang zwischen den Marken: Die Live-Rangliste nutzt dann die Runde aus den
+  Abstiegen (mit Warnzeichen), und im Ergebnis steht eine Warnung.
+- **Hin und zurueck (gegenlaeufig):** Start = Durchgang auf die Kursseite, Ende der Runde = Durchgang zurueck.
+- Optional pro Wettfahrt: **"Erster Start darf in der Verlaengerung der Linie liegen"** (bis ca. 400 m hinter den Marken; nur der erste Start,
+  nie ein weiterer Start oder das Ziel).
+- GPS-Zittern direkt nach einem Durchgang zaehlt nicht (Mindestrundenzeit). Einzelne Zeiten und Status lassen sich im Ergebnis von Hand korrigieren.
 
 Der Kurs wird beim Anlegen/Starten einer Wettfahrt in diese kopiert; fuer bestehende Wettfahrten "Linie & Kurs aktuell uebernehmen".
 
