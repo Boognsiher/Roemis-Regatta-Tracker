@@ -72,6 +72,13 @@ Ablauf:
 
 ### Kurs, Live-Rangliste, nachtraegliche Wettfahrten und Export
 
+**Mehrere Kurse zur Auswahl:** Ein *Kurs* buendelt Linie, Bahnmarken und die Zaehllogik (Linie pro Runde `loop`/`bounce`,
+Runden, minimale Rundenzeit, Zielschluss, Start in der Verlaengerung). In `/regatta.html`, Bereich 3, waehlst du den aktiven Kurs,
+legst neue an (Rundkurs / hin und zurueck / Kopie des aktuellen), benennst und loeschst sie. Der Editor darunter bearbeitet immer den
+aktiven Kurs. Beim Anlegen einer Wettfahrt waehlst du den Kurs; Runden, Zielschluss und Modus werden vorbelegt und die Wettfahrt
+behaelt ihre eigene Kopie (spaetere Aenderungen am Kurs aendern bestehende Wettfahrten nicht). Vorinstalliert ist der Kurs
+"Rundkurs, Linie in der Mitte (Boje 1 oben, Boje 2 unten)" - Koordinaten eintragen und testen.
+
 **Kurs (Bahnmarken) und Linie eingeben** (`/regatta.html`, Bereich 3): Linie (A, B, Referenz) und Bojen einer Runde **in Fahrtreihenfolge**
 lassen sich per **Koordinaten** eingeben, per Klick auf die Karte setzen oder als GPX/GeoJSON importieren (Strecken werden auf die
 Eckpunkte vereinfacht). Koordinaten werden in den ueblichen Schreibweisen verstanden: `46.8419, 10.5130`, `46,8419; 10,5130`,

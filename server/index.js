@@ -322,6 +322,21 @@ app.delete('/api/admin/trackers/:id/registration', requireAdmin, (req, res) => {
 app.put('/api/admin/line', requireAdmin, (req, res) => {
   res.json({ line: regatta.setLine(req.body) });
 });
+// Kurse (Vorlagen: Geometrie + Zaehlregeln)
+app.post('/api/admin/courses', requireAdmin, (req, res) => {
+  res.status(201).json({ course: regatta.createCourse(req.body || {}) });
+});
+app.patch('/api/admin/courses/:id', requireAdmin, (req, res) => {
+  res.json({ course: regatta.updateCourse(req.params.id, req.body || {}) });
+});
+app.post('/api/admin/courses/:id/activate', requireAdmin, (req, res) => {
+  res.json({ course: regatta.activateCourse(req.params.id) });
+});
+app.delete('/api/admin/courses/:id', requireAdmin, (req, res) => {
+  regatta.deleteCourse(req.params.id);
+  res.json({ ok: true });
+});
+
 // Kurs (grobe Bojen-Strecke) setzen oder loeschen (marks: null)
 app.put('/api/admin/course', requireAdmin, (req, res) => {
   res.json({ course: regatta.setCourse(req.body && req.body.marks, req.body && req.body.radiusM, req.body && req.body.exact) });

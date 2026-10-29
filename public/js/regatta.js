@@ -373,7 +373,7 @@
   $('race-create').addEventListener('click', guard(async () => {
     const startTs = fromLocalInput($('race-start').value);
     await api('/api/admin/races', 'POST', {
-      name: $('race-name').value, laps: $('race-laps').value, cutoffMinutes: $('race-cutoff').value, lapMode: $('race-mode').value, startOnExtension: $('race-ext').checked, startTs: startTs || undefined
+      name: $('race-name').value, courseId: $('race-course').value || undefined, laps: $('race-laps').value, cutoffMinutes: $('race-cutoff').value, lapMode: $('race-mode').value, startOnExtension: $('race-ext').checked, startTs: startTs || undefined
     });
     $('race-name').value = '';
     $('race-start').value = '';
@@ -390,6 +390,7 @@
       <div class="row">
         <div style="font-weight:700;font-size:1.05rem">${esc(r.name)}</div>
         <span class="badge">${r.laps} Runden</span>
+        ${r.courseName ? `<span class="badge">${esc(r.courseName)}</span>` : ''}
         ${r.official ? '<span class="badge official">OFFIZIELL</span>' : '<span class="badge warn">vorlaeufig</span>'}
         ${started ? `<span class="badge">Start ${fmtClock(r.startTs)}</span>` : '<span class="badge">nicht gestartet</span>'}
       </div>`;
@@ -514,7 +515,7 @@
     await Promise.all(regatta.races.filter((r) => r.startTs != null).map(async (r) => {
       results[r.id] = await api(`/api/races/${r.id}/results`);
     }));
-    renderClasses(); renderBoats(); renderRaces();
+    renderClasses(); renderBoats(); renderRaces(); renderCourseSelect();
     await loadHistory();
     await loadDetectedMarks();
   }
@@ -553,13 +554,57 @@
     drawLine();
   }
 
-  let firstLoad = true;
-  load().then(() => {
+  // ---------- Kurs-Auswahl ----------
+  const activeCourse = () => (regatta.courses || []).find((c) => c.id === regatta.activeCourseId);
+  function renderCourseSelect() {
+    const list = regatta.courses || [];
+    $('cs-select').innerHTML = list.map((c) => `<option value="${esc(c.id)}"${c.id === regatta.activeCourseId ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+    const keep = $('race-course').value;
+    $('race-course').innerHTML = list.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+    $('race-course').value = list.some((c) => c.id === keep) ? keep : regatta.activeCourseId;
+    const c = activeCourse();
+    if (!c || document.activeElement.closest('#cs-name,#cs-desc,#cs-laps,#cs-minlap,#cs-cutoff')) return;
+    $('cs-name').value = c.name; $('cs-desc').value = c.description || '';
+    $('cs-mode').value = c.lapMode; $('cs-laps').value = c.laps; $('cs-minlap').value = c.minLapSeconds;
+    $('cs-cutoff').value = c.cutoffMinutes; $('cs-ext').checked = !!c.startOnExtension;
+  }
+  function applyRaceDefaults() {
+    const c = (regatta.courses || []).find((x) => x.id === $('race-course').value);
+    if (!c) return;
+    $('race-laps').value = c.laps; $('race-cutoff').value = c.cutoffMinutes;
+    $('race-mode').value = c.lapMode; $('race-ext').checked = !!c.startOnExtension;
+  }
+  $('race-course').addEventListener('change', applyRaceDefaults);
+  function loadDrafts() {
+    lineDraft.a = lineDraft.b = lineDraft.mark = null;
+    courseDraft.marks = []; courseDraft.radiusM = 250; courseDraft.exact = false;
     if (regatta.line) Object.assign(lineDraft, regatta.line);
     if (regatta.course) { courseDraft.marks = regatta.course.marks.slice(); courseDraft.radiusM = regatta.course.radiusM; courseDraft.exact = !!regatta.course.exact; }
+    $('course-radius').value = courseDraft.radiusM;
+    renderCourseSelect(); $('race-course').value = regatta.activeCourseId; applyRaceDefaults();
     renderLineControls(); renderCourse(); drawLine();
-    firstLoad = false;
-  }).catch((e) => alert(e.message));
+  }
+  async function courseAction(path, method, body, msg) {
+    await api(path, method, body);
+    await load();
+    loadDrafts();
+    $('cs-msg').textContent = msg || '';
+  }
+  $('cs-select').addEventListener('change', guard(() => courseAction(`/api/admin/courses/${$('cs-select').value}/activate`, 'POST', {}, 'Kurs gewechselt.')));
+  $('cs-copy').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { copyFrom: regatta.activeCourseId }, 'Kopie angelegt.')));
+  $('cs-new-loop').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'loop' }, 'Neuer Rundkurs angelegt - Linie und Bojen eintragen.')));
+  $('cs-new-bounce').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'bounce' }, 'Neuer Kurs angelegt - Linie und Bojen eintragen.')));
+  $('cs-del').addEventListener('click', guard(async () => {
+    const c = activeCourse();
+    if (c && confirm(`Kurs "${c.name}" loeschen? Bereits angelegte Wettfahrten behalten ihre Kopie.`)) await courseAction(`/api/admin/courses/${c.id}`, 'DELETE', undefined, 'Kurs geloescht.');
+  }));
+  $('cs-save').addEventListener('click', guard(() => courseAction(`/api/admin/courses/${regatta.activeCourseId}`, 'PATCH', {
+    name: $('cs-name').value, description: $('cs-desc').value, lapMode: $('cs-mode').value, laps: $('cs-laps').value,
+    minLapSeconds: $('cs-minlap').value, cutoffMinutes: $('cs-cutoff').value, startOnExtension: $('cs-ext').checked
+  }, 'Regeln gespeichert.')));
+
+  let firstLoad = true;
+  load().then(() => { loadDrafts(); firstLoad = false; }).catch((e) => alert(e.message));
   // Auto-Refresh der Ergebnisse (nicht waehrend ein Korrektur-Formular offen ist)
   setInterval(() => { if (!firstLoad && !openRows.size && !document.activeElement.closest('#races')) load().catch(() => {}); }, 10000);
 })();

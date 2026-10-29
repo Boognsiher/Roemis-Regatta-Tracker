@@ -18,9 +18,22 @@ const STATUS_CODES = ['DNS', 'DNF', 'DSQ', 'OCS', 'RET', 'DNC'];
 
 /** @type {{classes: object[], boats: Record<string, object>, line: object|null, races: object[]}} */
 const state = Object.assign(
-  { classes: [], boats: {}, line: null, course: null, races: [] },
+  { classes: [], boats: {}, line: null, course: null, courses: [], activeCourseId: null, races: [] },
   store.loadJson(FILE, {})
 );
+
+// ---------- Kurse (Vorlagen mit Geometrie + Zaehlregeln) ----------
+// Ein Kurs buendelt Linie, Bahnmarken und die Regeln, nach denen gezaehlt wird. state.line/state.course sind die Arbeitskopie des
+// aktiven Kurses (der Editor bearbeitet immer den aktiven Kurs); Wettfahrten kopieren Geometrie und Regeln eines Kurses beim Anlegen.
+const COURSE_KINDS = {
+  loop: { lapMode: 'loop', name: 'Neuer Rundkurs', description: 'Immer in dieselbe Richtung durch die Linie (Richtung Boje 1); Start und Ziel nur zwischen den Marken.' },
+  bounce: { lapMode: 'bounce', name: 'Neuer Kurs (hin und zurueck)', description: 'Linie wird je Runde zweimal gegenlaeufig gekreuzt (Start auf die Kursseite, Rundenende zurueck).' }
+};
+const DEFAULT_COURSE = {
+  name: 'Rundkurs, Linie in der Mitte (Boje 1 oben, Boje 2 unten)',
+  description: 'Durchgang immer Richtung Boje 1 zwischen Zielboot und Zielboje; Abstieg von Boje 1 zu Boje 2 ausserhalb der Linie (Verlaengerung = Runden-Anzeiger); Start und Ziel nur zwischen den Marken; 2 Runden.',
+  lapMode: 'loop'
+};
 
 let timer = null;
 function save() {
@@ -120,6 +133,94 @@ function unregisterBoat(trackerId) {
   save();
 }
 
+function newCourse(o = {}) {
+  return {
+    id: genId(),
+    name: String(o.name || DEFAULT_COURSE.name).trim().slice(0, 80),
+    description: String(o.description || '').slice(0, 400),
+    lapMode: o.lapMode === 'bounce' ? 'bounce' : 'loop',
+    startOnExtension: o.startOnExtension === true,
+    laps: Math.max(1, Math.min(10, parseInt(o.laps, 10) || 2)),
+    minLapSeconds: Math.max(10, parseInt(o.minLapSeconds, 10) || 120),
+    cutoffMinutes: Math.min(24 * 60, Math.max(10, parseInt(o.cutoffMinutes, 10) || 180)),
+    line: o.line ? JSON.parse(JSON.stringify(o.line)) : null,
+    course: o.course ? JSON.parse(JSON.stringify(o.course)) : null
+  };
+}
+
+function courseById(id) {
+  return state.courses.find((c) => c.id === id) || null;
+}
+
+function activeCourse() {
+  return courseById(state.activeCourseId) || state.courses[0] || null;
+}
+
+/** Beim Laden: Altbestand (eine globale Linie/ein Kurs) in einen ersten Kurs uebernehmen; sicherstellen, dass einer aktiv ist. */
+function migrateCourses() {
+  if (!Array.isArray(state.courses)) state.courses = [];
+  if (!state.courses.length) {
+    state.courses.push(newCourse({ ...DEFAULT_COURSE, line: state.line, course: state.course }));
+  }
+  if (!courseById(state.activeCourseId)) state.activeCourseId = state.courses[0].id;
+  const a = activeCourse();
+  state.line = a.line ? JSON.parse(JSON.stringify(a.line)) : null;
+  state.course = a.course ? JSON.parse(JSON.stringify(a.course)) : null;
+}
+
+function listCourses() {
+  return state.courses;
+}
+
+/** Neuer Kurs: nach Typ (loop/bounce) oder als Kopie eines bestehenden Kurses (Geometrie und Regeln). Wird aktiv. */
+function createCourse({ name, kind, copyFrom }) {
+  let c;
+  if (copyFrom) {
+    const src = courseById(copyFrom);
+    if (!src) throw httpError(404, 'Kurs unbekannt');
+    c = newCourse({ ...src, name: name || `${src.name} (Kopie)` });
+  } else {
+    const k = COURSE_KINDS[kind] || COURSE_KINDS.loop;
+    c = newCourse({ name: name || k.name, description: k.description, lapMode: k.lapMode });
+  }
+  state.courses.push(c);
+  activateCourse(c.id);
+  return c;
+}
+
+function updateCourse(id, patch) {
+  const c = courseById(id);
+  if (!c) throw httpError(404, 'Kurs unbekannt');
+  if (patch.name != null) c.name = String(patch.name).trim().slice(0, 80) || c.name;
+  if (patch.description != null) c.description = String(patch.description).slice(0, 400);
+  if (patch.lapMode != null) c.lapMode = patch.lapMode === 'bounce' ? 'bounce' : 'loop';
+  if (patch.startOnExtension != null) c.startOnExtension = patch.startOnExtension === true || patch.startOnExtension === 'true';
+  if (patch.laps != null) c.laps = Math.max(1, Math.min(10, parseInt(patch.laps, 10) || c.laps));
+  if (patch.minLapSeconds != null) c.minLapSeconds = Math.max(10, parseInt(patch.minLapSeconds, 10) || c.minLapSeconds);
+  if (patch.cutoffMinutes != null) c.cutoffMinutes = Math.min(24 * 60, Math.max(10, parseInt(patch.cutoffMinutes, 10) || c.cutoffMinutes));
+  save();
+  return c;
+}
+
+/** Kurs aktivieren: Linie und Bahnmarken des Kurses werden zur Arbeitskopie (Editor), neue Wettfahrten nutzen ihn als Vorgabe. */
+function activateCourse(id) {
+  const c = courseById(id);
+  if (!c) throw httpError(404, 'Kurs unbekannt');
+  state.activeCourseId = c.id;
+  state.line = c.line ? JSON.parse(JSON.stringify(c.line)) : null;
+  state.course = c.course ? JSON.parse(JSON.stringify(c.course)) : null;
+  save();
+  return c;
+}
+
+function deleteCourse(id) {
+  if (!courseById(id)) throw httpError(404, 'Kurs unbekannt');
+  if (state.courses.length <= 1) throw httpError(409, 'Der letzte Kurs kann nicht geloescht werden');
+  state.courses = state.courses.filter((c) => c.id !== id);
+  if (state.activeCourseId === id) activateCourse(state.courses[0].id);
+  save();
+}
+
 // ---------- Linie ----------
 
 function setLine(line) {
@@ -129,6 +230,8 @@ function setLine(line) {
   const candidate = { a: point(line.a), b: point(line.b), mark: point(line.mark) };
   if (!timing.prepareLine(candidate)) throw httpError(400, 'Linie ungueltig (zu kurz oder Referenzpunkt auf der Linie)');
   state.line = candidate;
+  const ac = activeCourse();
+  if (ac) ac.line = JSON.parse(JSON.stringify(candidate));
   save();
   return state.line;
 }
@@ -138,7 +241,7 @@ function setLine(line) {
  * System selbst aus den Logs der Boote (Wendepunkte in der Naehe der gezeichneten Punkte).
  */
 function setCourse(marks, radiusM, exact) {
-  if (marks === null) { state.course = null; save(); return null; }
+  if (marks === null) { state.course = null; const a0 = activeCourse(); if (a0) a0.course = null; save(); return null; }
   // Eintrag = einzelne Boje {lat, lon} oder Tor {a: {lat, lon}, b: {lat, lon}} (zwei Marken, Durchfahrt zaehlt)
   const isGate = (m) => m && isPoint(m.a) && isPoint(m.b);
   if (!Array.isArray(marks) || marks.length < 1 || marks.length > 20 || !marks.every((m) => isPoint(m) || isGate(m))) {
@@ -147,6 +250,8 @@ function setCourse(marks, radiusM, exact) {
   const r = Number.isFinite(radiusM) ? Math.min(1000, Math.max(30, radiusM)) : 250;
   // exact: Positionen sind von der Wettfahrtleitung eingegeben (genau) und werden NICHT aus den Logs verfeinert
   state.course = { marks: marks.map((m) => (isGate(m) ? { a: point(m.a), b: point(m.b) } : point(m))), radiusM: r, exact: !!exact };
+  const ac = activeCourse();
+  if (ac) ac.course = JSON.parse(JSON.stringify(state.course));
   save();
   return state.course;
 }
@@ -166,19 +271,28 @@ function assertEditable(race) {
 const clone = (o) => (o ? JSON.parse(JSON.stringify(o)) : null);
 const parseCutoff = (v, fallback) => Math.min(24 * 60, Math.max(10, parseInt(v, 10) || fallback));
 
-/** Wettfahrt anlegen. Mit startTs (auch in der Vergangenheit) wird sie sofort aus den vorhandenen Aufzeichnungen gewertet. */
-function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode, startOnExtension }) {
+/**
+ * Wettfahrt anlegen. Geometrie (Linie, Bahnmarken) und Zaehlregeln kommen vom gewaehlten Kurs (courseId, sonst der aktive Kurs);
+ * explizit angegebene Werte (Runden, Zielschluss, Modus, ...) ueberschreiben die Vorgaben des Kurses.
+ * Mit startTs (auch in der Vergangenheit) wird sie sofort aus den vorhandenen Aufzeichnungen gewertet.
+ */
+function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode, startOnExtension, courseId }) {
+  const c = (courseId && courseById(courseId)) || activeCourse() || newCourse();
+  if (courseId && !courseById(courseId)) throw httpError(404, 'Kurs unbekannt');
+  const pick = (v, fallback) => (v === undefined || v === null || v === '' ? fallback : v);
   const race = {
     id: genId(),
     name: String(name || `Wettfahrt ${state.races.length + 1}`).trim().slice(0, 60),
-    laps: Math.max(1, Math.min(10, parseInt(laps, 10) || 2)),
-    minLapSeconds: Math.max(10, parseInt(minLapSeconds, 10) || 120),
-    cutoffMinutes: parseCutoff(cutoffMinutes, 180),
-    lapMode: lapMode === 'loop' ? 'loop' : 'bounce',
-    startOnExtension: startOnExtension === true || startOnExtension === 'true',
+    courseId: c.id,
+    courseName: c.name,
+    laps: Math.max(1, Math.min(10, parseInt(pick(laps, c.laps), 10) || 2)),
+    minLapSeconds: Math.max(10, parseInt(pick(minLapSeconds, c.minLapSeconds), 10) || 120),
+    cutoffMinutes: parseCutoff(pick(cutoffMinutes, c.cutoffMinutes), 180),
+    lapMode: pick(lapMode, c.lapMode) === 'bounce' ? 'bounce' : 'loop',
+    startOnExtension: pick(startOnExtension, c.startOnExtension) === true || pick(startOnExtension, c.startOnExtension) === 'true',
     startTs: null,
-    line: clone(state.line),
-    course: clone(state.course),
+    line: clone(c.line),
+    course: clone(c.course),
     overrides: {},
     official: false,
     createdAt: Date.now()
@@ -199,11 +313,13 @@ function raceEnd(race) {
 }
 
 /** Linie und Kurs der Wettfahrt auf die aktuell gespeicherten Werte setzen (fuer nachtraegliche Wettfahrten). */
-function applyGeometry(id, { line = true, course = true } = {}) {
+function applyGeometry(id, { line = true, course = true, courseId } = {}) {
   const race = getRace(id);
   assertEditable(race);
-  if (line) race.line = clone(state.line);
-  if (course) race.course = clone(state.course);
+  const c = (courseId && courseById(courseId)) || courseById(race.courseId) || activeCourse();
+  if (c) { race.courseId = c.id; race.courseName = c.name; }
+  if (line) race.line = clone(c ? c.line : state.line);
+  if (course) race.course = clone(c ? c.course : state.course);
   save();
   return race;
 }
@@ -233,10 +349,11 @@ function startRace(id, ts) {
   const race = getRace(id);
   assertEditable(race);
   const t = isNum(ts) ? ts : Date.now();
-  if (!state.line) throw httpError(400, 'Zuerst Start-/Ziellinie festlegen');
+  // Geometrie des Kurses dieser Wettfahrt in der aktuellen Fassung uebernehmen (Aenderungen am Kurs vor dem Start gelten)
+  const src = courseById(race.courseId);
+  if (src && src.line) { race.line = clone(src.line); race.course = clone(src.course); }
+  if (!race.line) throw httpError(400, 'Zuerst Start-/Ziellinie festlegen');
   race.startTs = t;
-  race.line = clone(state.line);
-  race.course = clone(state.course);
   save();
   return race;
 }
@@ -376,8 +493,10 @@ function publicState() {
     boats: state.boats,
     line: state.line,
     course: state.course,
+    courses: state.courses,
+    activeCourseId: state.activeCourseId,
     races: state.races.map((r) => ({
-      id: r.id, name: r.name, laps: r.laps, minLapSeconds: r.minLapSeconds, cutoffMinutes: r.cutoffMinutes || 180,
+      id: r.id, name: r.name, courseId: r.courseId || null, courseName: r.courseName || null, laps: r.laps, minLapSeconds: r.minLapSeconds, cutoffMinutes: r.cutoffMinutes || 180,
       lapMode: r.lapMode || 'bounce', startOnExtension: r.startOnExtension === true, startTs: r.startTs, official: r.official, overrides: r.overrides, hasLine: !!r.line, hasCourse: !!r.course
     }))
   };
@@ -487,7 +606,10 @@ function exportSelection({ race, from, to, trackers }) {
   return { entries, from: f, to: t, name, waypoints };
 }
 
+migrateCourses();
+
 module.exports = {
+  listCourses, createCourse, updateCourse, activateCourse, deleteCourse, courseById, activeCourse,
   exportSelection, computeLive, getLive, isRunning, runningRaces,
   flush, state, STATUS_CODES, httpError, publicState,
   setCourse, applyGeometry, raceEnd, windowFixes,

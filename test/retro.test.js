@@ -36,8 +36,8 @@ test('nachtraegliche Wettfahrten aus Aufzeichnungen, Zielschluss trennt zwei Lae
   recordRace(tr.id, gun1);
   recordRace(tr.id, gun2);
 
-  const r1 = regatta.createRace({ name: 'Lauf 1', laps: 2, startTs: gun1, cutoffMinutes: 30 });
-  const r2 = regatta.createRace({ name: 'Lauf 2', laps: 2, startTs: gun2, cutoffMinutes: 30 });
+  const r1 = regatta.createRace({ name: 'Lauf 1', laps: 2, startTs: gun1, cutoffMinutes: 30, lapMode: 'bounce' });
+  const r2 = regatta.createRace({ name: 'Lauf 2', laps: 2, startTs: gun2, cutoffMinutes: 30, lapMode: 'bounce' });
   assert.strictEqual(r1.startTs, gun1);
   assert.strictEqual(regatta.raceEnd(r1), gun1 + 30 * 60000);
 
@@ -50,11 +50,11 @@ test('nachtraegliche Wettfahrten aus Aufzeichnungen, Zielschluss trennt zwei Lae
   }
 
   // Zielschluss: Lauf 1 darf nicht die Runden aus Lauf 2 zaehlen, wenn Lauf 1 nur 1 Runde segelt
-  const r3 = regatta.createRace({ name: 'Lauf 1 kurz', laps: 4, startTs: gun1, cutoffMinutes: 30 });
+  const r3 = regatta.createRace({ name: 'Lauf 1 kurz', laps: 4, startTs: gun1, cutoffMinutes: 30, lapMode: 'bounce' });
   const e3 = regatta.computeResults(r3).entries[0];
   assert.strictEqual(e3.status, 'DNF');
   assert.strictEqual(e3.laps.length, 2);               // nur die 2 Runden von Lauf 1, nicht die aus Lauf 2
-  const r4 = regatta.createRace({ name: 'Lauf 1 lang', laps: 4, startTs: gun1, cutoffMinutes: 120 });
+  const r4 = regatta.createRace({ name: 'Lauf 1 lang', laps: 4, startTs: gun1, cutoffMinutes: 120, lapMode: 'bounce' });
   assert.strictEqual(regatta.computeResults(r4).entries[0].laps.length, 4);  // ohne engen Zielschluss zaehlt Lauf 2 mit
 
   // Zielschluss nachtraeglich aendern
@@ -63,10 +63,11 @@ test('nachtraegliche Wettfahrten aus Aufzeichnungen, Zielschluss trennt zwei Lae
 });
 
 test('Wettfahrt ohne Linie kann nicht mit Startzeit angelegt werden; Geometrie uebernehmen', () => {
-  const savedLine = regatta.state.line;
-  regatta.state.line = null;
+  const ac = regatta.activeCourse();
+  const savedLine = ac.line;
+  ac.line = null;
   assert.throws(() => regatta.createRace({ name: 'x', startTs: 1000 }), /linie/i);
-  regatta.state.line = savedLine;
+  ac.line = savedLine;
   const r = regatta.createRace({ name: 'ohne Start' });
   assert.strictEqual(r.startTs, null);
   regatta.setCourse([{ lat: lat0 + 0.004, lon: lon0 }], 200);
@@ -125,4 +126,66 @@ test('Kurs mit Tor wird gespeichert, ungueltige Formen werden abgelehnt', () => 
   const sel = regatta.exportSelection({});
   assert.ok(sel.waypoints.some((w) => w.name === 'Tor 2 A') && sel.waypoints.some((w) => w.name === 'Tor 2 B'));
   regatta.setCourse([pt(0, 150)], 200, false);
+});
+
+
+// ---- Kurse (Vorlagen mit Geometrie + Regeln) ----
+test('Standardkurs existiert, Linie/Kurs-Aenderungen schreiben in den aktiven Kurs durch', () => {
+  const courses = regatta.listCourses();
+  assert.ok(courses.length >= 1);
+  const a = regatta.activeCourse();
+  assert.strictEqual(a.lapMode, 'loop');
+  assert.strictEqual(a.startOnExtension, false);
+  assert.strictEqual(a.laps, 2);
+  assert.ok(/Boje 1 oben/.test(a.name));
+  regatta.setLine({ a: pt(-60, 0), b: pt(60, 0), mark: pt(0, 400) });
+  assert.strictEqual(Math.round((regatta.activeCourse().line.b.lon - regatta.activeCourse().line.a.lon) * 1e6) > 0, true);
+  regatta.setCourse([pt(0, 400), pt(100, -300)], 200, true);
+  assert.strictEqual(regatta.activeCourse().course.marks.length, 2);
+});
+
+test('Neue Kurse nach Typ und als Kopie, aktivieren laedt die Geometrie, Wettfahrten behalten ihre Kopie', () => {
+  const base = regatta.activeCourse();
+  const copy = regatta.createCourse({ name: 'Kopie davon', copyFrom: base.id });
+  assert.strictEqual(regatta.activeCourse().id, copy.id);
+  assert.strictEqual(copy.course.marks.length, 2);                         // Geometrie mitkopiert
+  assert.notStrictEqual(copy.course, base.course);                          // eigene Kopie
+  const hz = regatta.createCourse({ kind: 'bounce' });                      // leerer Kurs vom Typ "hin und zurueck"
+  assert.strictEqual(hz.lapMode, 'bounce');
+  assert.strictEqual(hz.course, null);
+  assert.strictEqual(regatta.state.course, null);                           // Arbeitskopie = aktiver (leerer) Kurs
+
+  // Wettfahrt aus dem Standardkurs: Geometrie und Regeln kopiert, spaetere Aenderungen am Kurs aendern sie nicht
+  const race = regatta.createRace({ name: 'Aus Kurs', courseId: base.id });
+  assert.strictEqual(race.courseId, base.id);
+  assert.strictEqual(race.courseName, base.name);
+  assert.strictEqual(race.lapMode, 'loop');
+  assert.strictEqual(race.course.marks.length, 2);
+  regatta.updateCourse(base.id, { lapMode: 'bounce', laps: 3, name: 'Umbenannt' });
+  assert.strictEqual(race.lapMode, 'loop');
+  assert.strictEqual(race.laps, 2);
+  // Beim Start gilt die aktuelle Fassung des Kurses der Wettfahrt (Geometrie), nicht der gerade aktive Kurs
+  regatta.activateCourse(hz.id);
+  regatta.activateCourse(base.id);
+  regatta.setCourse([pt(10, 450)], 150, true);
+  regatta.activateCourse(hz.id);                                            // anderer Kurs aktiv, Wettfahrt gehoert zu base
+  const started = regatta.startRace(race.id, 1000);
+  assert.strictEqual(started.course.marks.length, 1);                       // geaenderte Fassung von base
+  assert.strictEqual(started.courseId, base.id);
+  // explizite Werte ueberschreiben die Kursregeln
+  const r2 = regatta.createRace({ name: 'Ueberschrieben', courseId: base.id, laps: 4, lapMode: 'loop', startOnExtension: true });
+  assert.deepStrictEqual([r2.laps, r2.lapMode, r2.startOnExtension], [4, 'loop', true]);
+});
+
+test('Kurse loeschen: der letzte bleibt, aktiver Kurs wird ersetzt; unbekannte Ids werden abgelehnt', () => {
+  const all = regatta.listCourses().slice();
+  assert.ok(all.length >= 3);
+  const active = regatta.activeCourse();
+  regatta.deleteCourse(active.id);
+  assert.ok(regatta.activeCourse().id !== active.id);                       // anderer Kurs ist nun aktiv
+  assert.strictEqual(regatta.state.line === null || typeof regatta.state.line === 'object', true);
+  assert.throws(() => regatta.deleteCourse('gibtsnicht'), /unbekannt/);
+  assert.throws(() => regatta.createRace({ name: 'x', courseId: 'gibtsnicht' }), /unbekannt/);
+  while (regatta.listCourses().length > 1) regatta.deleteCourse(regatta.listCourses()[0].id);
+  assert.throws(() => regatta.deleteCourse(regatta.listCourses()[0].id), /letzte Kurs/);
 });
