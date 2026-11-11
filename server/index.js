@@ -161,6 +161,36 @@ app.post('/api/trackers/:id/position', authGuard.middleware, (req, res) => {
   res.json({ ok: true, entry });
 });
 
+// Segeluhr-Konfiguration (Wegpunkte, Boots-Profile, ...) pro Tracker ablegen/abrufen.
+// Auth wie bei /position per Bearer-Token; das Admin-Token (Header) darf ebenfalls zugreifen.
+function authTrackerConfig(req, res) {
+  const { id } = req.params;
+  const auth = req.get('authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!store.getTracker(id)) { res.status(404).json({ error: 'Tracker unbekannt' }); return false; }
+  const adminHdr = req.get('x-admin-token') || '';
+  const isAdmin = ADMIN_TOKEN && adminHdr && safeEqual(adminHdr, ADMIN_TOKEN);
+  if (!isAdmin && !store.verifyToken(id, token)) { res.status(401).json({ error: 'Ungueltiges Token' }); return false; }
+  return true;
+}
+
+app.get('/api/trackers/:id/config', authGuard.middleware, (req, res) => {
+  if (!authTrackerConfig(req, res)) return;
+  const cfg = store.getConfig(req.params.id);
+  if (!cfg) return res.status(404).json({ error: 'Noch keine Konfiguration gespeichert' });
+  res.json(cfg);
+});
+
+app.put('/api/trackers/:id/config', authGuard.middleware, (req, res) => {
+  if (!authTrackerConfig(req, res)) return;
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Konfiguration muss ein JSON-Objekt sein' });
+  }
+  const cfg = store.setConfig(req.params.id, body);
+  res.json({ ok: true, updatedAt: cfg.updatedAt });
+});
+
 // Mehrere (ggf. nachgesendete) Positionen auf einmal - der Handy-Client puffert bei Funkloch.
 app.post('/api/trackers/:id/positions', authGuard.middleware, (req, res) => {
   const { id } = req.params;
