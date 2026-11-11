@@ -11,7 +11,7 @@
 #define BATT_CHARGE_MA 500        // hoechstens 0.5C der Zelle: 3000-mAh-Zelle -> bis ca. 1500, konservativ 500-1000
 #endif
 #ifndef BATT_CUTOFF_MV
-#define BATT_CUTOFF_MV 3000       // Abschaltung bei 3.0 V (Strom-Chip erlaubt 2600-3300 mV in 100-mV-Schritten)
+#define BATT_CUTOFF_MV 3200       // Abschaltung bei 3.2 V (schont ungeschuetzte Zellen) (Strom-Chip erlaubt 2600-3300 mV in 100-mV-Schritten)
 #endif
 
 static const uint16_t BATT_CHARGE_STEPS_MA[] = {100, 125, 150, 175, 200, 300, 400, 500, 600, 700, 800, 900, 1000};

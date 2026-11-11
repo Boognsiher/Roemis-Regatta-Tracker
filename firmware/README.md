@@ -57,7 +57,7 @@ Wichtig:
   Hardware geprueft.** Bei "LoRa-Init fehlgeschlagen" zuerst `LORA_*` und `LORA_TCXO_V` in `config.h` gegen den
   Schaltplan deiner Revision pruefen.
 - **Akku-Einstellungen:** `BATT_CHARGE_MA` (Ladestrom, Standard 500 mA) und `BATT_CUTOFF_MV` (Abschaltspannung,
-  Standard 3000 mV = 3.0 V) in `include/battery.h`, oder per Build-Flag, z.B. `-DBATT_CHARGE_MA=1000`. Der Ladestrom wird
+  Standard 3200 mV = 3.2 V) in `include/battery.h`, oder per Build-Flag, z.B. `-DBATT_CHARGE_MA=1000`. Der Ladestrom wird
   auf die naechste Stufe des Strom-Chips abgerundet (100-1000 mA, nie mehr als gewuenscht), die Abschaltspannung auf
   2600-3300 mV in 100-mV-Schritten. Faustregel: Ladestrom hoechstens die Haelfte der Kapazitaet (3000 mAh -> bis 1500 mA,
   das Maximum des Chips ist 1000 mA). Beim Start steht die aktive Einstellung im seriellen Monitor. Die Abschaltung schuetzt

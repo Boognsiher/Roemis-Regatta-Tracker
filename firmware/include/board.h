@@ -43,11 +43,11 @@ inline void boardInit(bool needLora) {
     Serial.println("PMU (AXP2101) nicht gefunden - ist das ein T-Beam V1.0/V1.1 mit AXP192? Siehe firmware/README.md");
     return;
   }
-  pmu.setPowerChannelVoltage(XPOWERS_ALDO3, 3300);   // GPS
-  pmu.enablePowerOutput(XPOWERS_ALDO3);
+  pmu.setALDO3Voltage(3300);   // GPS
+  pmu.enableALDO3();
   if (needLora) {
-    pmu.setPowerChannelVoltage(XPOWERS_ALDO2, 3300); // LoRa (SX1262)
-    pmu.enablePowerOutput(XPOWERS_ALDO2);
+    pmu.setALDO2Voltage(3300); // LoRa (SX1262)
+    pmu.enableALDO2();
   }
   pmu.disableTSPinMeasure();      // kein Akku-Temperaturfuehler am T-Beam (also nicht bei Frost laden!)
   pmu.enableBattVoltageMeasure();
@@ -57,6 +57,7 @@ inline void boardInit(bool needLora) {
   pmuSetChargeCurrent(BATT_CHARGE_MA);
   pmu.setSysPowerDownVoltage(clampCutoffMv(BATT_CUTOFF_MV));
   pmu.enableCellbatteryCharge();
+  pmu.setChargingLedMode(XPOWERS_CHG_LED_CTRL_CHG);   // rote LED nur waehrend des Ladens (sonst leuchtet sie im Betrieb)
   Serial.printf("Akku: Ladestrom %u mA, Abschaltung bei %u mV\n", nearestChargeMa(BATT_CHARGE_MA), clampCutoffMv(BATT_CUTOFF_MV));
   delay(200);                     // GPS/LoRa hochfahren lassen
 }

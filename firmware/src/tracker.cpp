@@ -182,6 +182,27 @@ void loop() {
     }
   }
 
+#ifdef LORA_BENCH_TEST
+  // Tischtest ohne GPS: alle 2 s ein Testpaket (Position bei Reschensee, wandert langsam), keine Zeitfenster
+  static uint32_t lastBench = 0;
+  if (loraOk && millis() - lastBench >= 2000) {
+    lastBench = millis();
+    Fix f;
+    f.valid = true;
+    f.tsMs = 1700000000000ULL + millis();
+    f.lat = 46.84 + (millis() / 1000) * 1e-6;
+    f.lon = 10.51;
+    f.speedMs = 3.0f; f.course = 90; f.hdop = 1.0f;
+    TrackerPacket p;
+    fillPacket(p, f);
+    int st = radio.transmit((uint8_t *)&p, sizeof(p));
+    if (st == RADIOLIB_ERR_NONE) { txCount++; Serial.printf("TEST-TX #%u ok\n", txCount); }
+    else Serial.printf("TX Fehler %d\n", st);
+  }
+  handleSerial();
+  return;
+#endif
+
   // Sendefenster: (TRACKER_ID-1)*SLOT_MS innerhalb des Zyklus, Start in der ersten Haelfte des Fensters.
   uint64_t now = gpsNowMs();
   if (loraOk && now && lastFix.valid) {
