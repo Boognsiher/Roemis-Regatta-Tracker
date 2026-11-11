@@ -93,9 +93,12 @@ void handleSerial() {
     char c = Serial.read();
     if (logupHandleChar(c)) continue;
     if (c == 's') {
-      Serial.printf("ID %d | Sat %d | Fix %s | gesendet %u | Log %u | hochgeladen %u | %s\n", TRACKER_ID,
+      float b = boardBattery();
+      Serial.printf("ID %d | Sat %d | Fix %s | gesendet %u | Log %u | hochgeladen %u | Akku %s%d%% | %s\n", TRACKER_ID,
                     gps.satellites.isValid() ? (int)gps.satellites.value() : -1, lastFix.valid ? "ja" : "nein",
-                    txCount, (unsigned)logupEntries(), (unsigned)logupUploaded(), HOTSPOT_UPLOAD ? upStateText() : "Upload aus");
+                    txCount, (unsigned)logupEntries(), (unsigned)logupUploaded(),
+                    b < 0 ? "?" : "", b < 0 ? 0 : (int)lround(b * 100),
+                    HOTSPOT_UPLOAD ? upStateText() : "Upload aus");
     }
   }
 }
