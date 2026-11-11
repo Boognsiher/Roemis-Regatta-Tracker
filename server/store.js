@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { nanoid, customAlphabet } = require('nanoid');
+const timing = require('./timing');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const TRACKERS_FILE = path.join(DATA_DIR, 'trackers.json');
@@ -308,7 +309,7 @@ function getPublicTracker(id, { trail = true } = {}) {
     latest: pos.latest,
     stale: isStale(pos.latest)
   };
-  if (trail) out.trail = decimate(pos.trail, PUBLIC_TRAIL_POINTS);
+  if (trail) out.trail = decimate(timing.dropJitter(pos.trail), PUBLIC_TRAIL_POINTS);
   return out;
 }
 
