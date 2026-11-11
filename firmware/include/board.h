@@ -57,6 +57,7 @@ inline void boardInit(bool needLora) {
   pmuSetChargeCurrent(BATT_CHARGE_MA);
   pmu.setSysPowerDownVoltage(clampCutoffMv(BATT_CUTOFF_MV));
   pmu.enableCellbatteryCharge();
+  pmu.setChargingLedMode(XPOWERS_CHG_LED_CTRL_CHG);   // rote LED nur waehrend des Ladens (sonst leuchtet sie im Betrieb)
   Serial.printf("Akku: Ladestrom %u mA, Abschaltung bei %u mV\n", nearestChargeMa(BATT_CHARGE_MA), clampCutoffMv(BATT_CUTOFF_MV));
   delay(200);                     // GPS/LoRa hochfahren lassen
 }
