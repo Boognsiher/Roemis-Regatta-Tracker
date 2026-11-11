@@ -10,9 +10,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { nanoid, customAlphabet } = require('nanoid');
+const timing = require('./timing');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const TRACKERS_FILE = path.join(DATA_DIR, 'trackers.json');
+const CONFIGS_FILE = path.join(DATA_DIR, 'configs.json');
 const POSITIONS_FILE = path.join(DATA_DIR, 'positions.json');
 // Vollstaendige, unbegrenzte Aufzeichnung aller Fixes (Grundlage fuer die offizielle Zeitmessung).
 const HISTORY_DIR = path.join(DATA_DIR, 'history');
@@ -58,6 +60,9 @@ let trackers = loadJson(TRACKERS_FILE, {});
 /** @type {Record<string, {latest: object|null, trail: object[]}>} */
 let positions = loadJson(POSITIONS_FILE, {});
 
+/** Konfiguration der Segeluhr-App pro Tracker (beliebiges JSON-Objekt). @type {Record<string, {updatedAt:number,data:object}>} */
+let configs = loadJson(CONFIGS_FILE, {});
+
 let saveTimer = null;
 function scheduleSave() {
   if (saveTimer) return;
@@ -65,6 +70,7 @@ function scheduleSave() {
     saveTimer = null;
     saveJsonAtomic(TRACKERS_FILE, trackers);
     saveJsonAtomic(POSITIONS_FILE, positions);
+    saveJsonAtomic(CONFIGS_FILE, configs);
   }, 1000);
 }
 
@@ -73,6 +79,7 @@ function flush() {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   saveJsonAtomic(TRACKERS_FILE, trackers);
   saveJsonAtomic(POSITIONS_FILE, positions);
+  saveJsonAtomic(CONFIGS_FILE, configs);
 }
 
 function pickColor() {
@@ -113,10 +120,22 @@ function getTracker(id) {
   return trackers[id] || null;
 }
 
+function getConfig(id) {
+  return configs[id] || null;
+}
+
+function setConfig(id, data) {
+  if (!trackers[id]) return null;
+  configs[id] = { updatedAt: Date.now(), data };
+  scheduleSave();
+  return configs[id];
+}
+
 function deleteTracker(id) {
   const existed = !!trackers[id];
   delete trackers[id];
   delete positions[id];
+  delete configs[id];
   try { fs.unlinkSync(historyFile(id)); } catch { /* keine Historie vorhanden */ }
   historyCache.delete(id);
   if (existed) scheduleSave();
@@ -290,7 +309,7 @@ function getPublicTracker(id, { trail = true } = {}) {
     latest: pos.latest,
     stale: isStale(pos.latest)
   };
-  if (trail) out.trail = decimate(pos.trail, PUBLIC_TRAIL_POINTS);
+  if (trail) out.trail = decimate(timing.dropJitter(pos.trail), PUBLIC_TRAIL_POINTS);
   return out;
 }
 
@@ -329,6 +348,8 @@ module.exports = {
   listTrackers,
   getTracker,
   deleteTracker,
+  getConfig,
+  setConfig,
   verifyToken,
   renameTracker,
   recordPosition,

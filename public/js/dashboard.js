@@ -75,7 +75,10 @@
       entry.trail = t.trail.slice();
     } else {
       const last = entry.trail[entry.trail.length - 1];
-      if (!last || latest.ts > last.ts) entry.trail.push(latest);
+      // GPS-Rauschen im Stillstand nicht in die Spur zeichnen (Tempo ~0, Position springt wenige Meter)
+      const still = last && Number.isFinite(latest.speed) && latest.speed < 0.5 && Number.isFinite(last.speed) && last.speed < 0.5
+        && Math.hypot((latest.lon - last.lon) * 111320 * Math.cos((last.lat * Math.PI) / 180), (latest.lat - last.lat) * 110574) < 30;
+      if ((!last || latest.ts > last.ts) && !still) entry.trail.push(latest);
       if (entry.trail.length > MAX_CLIENT_TRAIL) entry.trail.splice(0, entry.trail.length - MAX_CLIENT_TRAIL);
     }
     entry.line.setLatLngs(entry.trail.map((p) => [p.lat, p.lon]));

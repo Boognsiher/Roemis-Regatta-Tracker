@@ -70,6 +70,21 @@ Ablauf:
 4. **Wettfahrt anlegen** (Rundenzahl, Standard 2) und **Startsignal** setzen ("JETZT" oder sekundengenau).
 5. Ergebnis erscheint laufend, ist **vorlaeufig**, bis die Wettfahrtleitung es **offiziell freigibt** (dann gesperrt).
 
+### Segeluhr-App (Android) als Tracker und Konfigurations-Ablage
+
+Die Android-App "Segeluhr" nutzt dieselbe Tracker-API wie die Handy-Seite: Tracker-Link aus dem Admin einfuegen, dann sendet sie ihre
+Position an `POST /api/trackers/<id>/position` (`Authorization: Bearer <token>`, Felder `lat`, `lon`, `speed`, `heading`, `battery`, `ts`
+in ms; `ts` = GPS-Zeit, damit die Zeitmessung stimmt). Zusaetzlich legt der Server pro Tracker die Konfiguration der App ab
+(Wegpunkte, Seegrenze, Boots-Profile; beliebiges JSON-Objekt, max. 500 KB):
+
+```
+GET /api/trackers/<id>/config   Authorization: Bearer <token>   -> { updatedAt, data }
+PUT /api/trackers/<id>/config   Authorization: Bearer <token>   Body: JSON-Objekt
+```
+
+Das Admin-Token (Header `x-admin-token`) darf ebenfalls lesen und schreiben. Die Daten liegen in `data/configs.json`
+(mit dem Tracker geloescht).
+
 ### Kurs, Live-Rangliste, nachtraegliche Wettfahrten und Export
 
 **Mehrere Kurse zur Auswahl:** Ein *Kurs* buendelt Linie, Bahnmarken und die Zaehllogik (Linie pro Runde `loop`/`bounce`,

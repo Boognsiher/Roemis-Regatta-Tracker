@@ -44,3 +44,16 @@ test('readHistoryCached liest inkrementell und ueberspringt defekte/halbe Zeilen
   store.deleteTracker(t.id);
   assert.strictEqual(store.readHistoryCached(t.id).length, 0);
 });
+
+test('Konfigurations-Ablage pro Tracker: speichern, lesen, mit dem Tracker loeschen', () => {
+  const t = store.createTracker('Cfg');
+  assert.strictEqual(store.getConfig(t.id), null);
+  assert.strictEqual(store.setConfig('gibtsnicht', { a: 1 }), null);
+  const saved = store.setConfig(t.id, { waypoints: [1, 2], profile: 'x' });
+  assert.deepStrictEqual(store.getConfig(t.id).data, { waypoints: [1, 2], profile: 'x' });
+  assert.ok(saved.updatedAt > 0);
+  store.flush();
+  assert.ok(fs.existsSync(path.join(process.env.DATA_DIR, 'configs.json')));
+  store.deleteTracker(t.id);
+  assert.strictEqual(store.getConfig(t.id), null);
+});

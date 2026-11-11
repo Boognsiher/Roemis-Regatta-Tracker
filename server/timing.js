@@ -125,7 +125,32 @@ function positionAt(fixes, ts) {
   return null;
 }
 
-/** Sortiert nach ts und entfernt doppelte Zeitstempel (Nachsenden/Wiederholung). */
+// GPS-Rauschen im Stillstand: Die Position springt um einige Meter, waehrend das GPS ein Tempo nahe 0 meldet.
+// Eine Folge von Fixes mit Tempo unter JITTER_STILL_MS bildet einen "Stillstands-Lauf" mit dem ersten Fix als Anker. Ein Fix
+// des Laufs wird verworfen, wenn er weiter vom Anker entfernt ist, als das gemeldete Tempo ueber die verstrichene Zeit hergibt
+// (plus JITTER_BASE_M). Ein langsam driftendes Boot (Abstand passt zum Tempo) bleibt deshalb unberuehrt; Fixes ohne Tempo oder
+// mit Tempo ab JITTER_STILL_MS werden nie verworfen und beenden den Lauf. Nach JITTER_MAX_RUN_S beginnt ein neuer Lauf.
+const JITTER_STILL_MS = 0.5;
+const JITTER_BASE_M = 3;
+const JITTER_FACTOR = 1.5;
+const JITTER_MAX_RUN_S = 30;
+
+function dropJitter(fixes) {
+  const out = [];
+  let anchor = null;
+  for (const f of fixes) {
+    if (!Number.isFinite(f.speed) || f.speed >= JITTER_STILL_MS) { out.push(f); anchor = null; continue; }
+    const dt = anchor ? (f.ts - anchor.ts) / 1000 : 0;
+    if (!anchor || dt > JITTER_MAX_RUN_S) { out.push(f); anchor = f; continue; }
+    const k = Math.cos((anchor.lat * Math.PI) / 180);
+    const dist = Math.hypot((f.lon - anchor.lon) * 111320 * k, (f.lat - anchor.lat) * 110574);
+    if (dist > JITTER_BASE_M + JITTER_FACTOR * Math.max(anchor.speed, f.speed) * dt) continue;
+    out.push(f);
+  }
+  return out;
+}
+
+/** Sortiert nach ts, entfernt doppelte Zeitstempel (Nachsenden/Wiederholung) und GPS-Rauschen im Stillstand. */
 function normalizeFixes(fixes) {
   const sorted = fixes
     .filter((f) => Number.isFinite(f.ts) && Number.isFinite(f.lat) && Number.isFinite(f.lon))
@@ -134,7 +159,7 @@ function normalizeFixes(fixes) {
   for (const f of sorted) {
     if (!out.length || out[out.length - 1].ts !== f.ts) out.push(f);
   }
-  return out;
+  return dropJitter(out);
 }
 
 /**
@@ -314,5 +339,5 @@ function rankEntries(entries) {
 }
 
 module.exports = {
-  makeProjector, makeUnprojector,   prepareLine, findCrossings, positionAt, normalizeFixes, analyzeBoat, correctedSeconds, rankEntries
+  makeProjector, makeUnprojector,   prepareLine, findCrossings, positionAt, normalizeFixes, dropJitter, analyzeBoat, correctedSeconds, rankEntries
 };
