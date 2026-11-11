@@ -43,11 +43,11 @@ inline void boardInit(bool needLora) {
     Serial.println("PMU (AXP2101) nicht gefunden - ist das ein T-Beam V1.0/V1.1 mit AXP192? Siehe firmware/README.md");
     return;
   }
-  pmu.setPowerChannelVoltage(XPOWERS_ALDO3, 3300);   // GPS
-  pmu.enablePowerOutput(XPOWERS_ALDO3);
+  pmu.setALDO3Voltage(3300);   // GPS
+  pmu.enableALDO3();
   if (needLora) {
-    pmu.setPowerChannelVoltage(XPOWERS_ALDO2, 3300); // LoRa (SX1262)
-    pmu.enablePowerOutput(XPOWERS_ALDO2);
+    pmu.setALDO2Voltage(3300); // LoRa (SX1262)
+    pmu.enableALDO2();
   }
   pmu.disableTSPinMeasure();      // kein Akku-Temperaturfuehler am T-Beam (also nicht bei Frost laden!)
   pmu.enableBattVoltageMeasure();
