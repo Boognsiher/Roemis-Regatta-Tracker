@@ -56,8 +56,8 @@ NimBLECharacteristic *notifyChar = nullptr;
 volatile bool bleConnected = false;
 
 class ServerCb : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer *s) { bleConnected = true; }
-  void onDisconnect(NimBLEServer *s) {
+  void onConnect(NimBLEServer *s, NimBLEConnInfo &connInfo) override { bleConnected = true; }
+  void onDisconnect(NimBLEServer *s, NimBLEConnInfo &connInfo, int reason) override {
     bleConnected = false;
     NimBLEDevice::getAdvertising()->start();
   }
@@ -201,7 +201,9 @@ void loop() {
 
   if (millis() - lastStatus > 10000) {
     lastStatus = millis();
-    Serial.printf("RX ok %u, defekt %u, BLE %s, Puffer %u\n", rxOk, rxBad, bleConnected ? "verbunden" : "getrennt",
-                  (unsigned)((ringHead + RING_SIZE - ringTail) % RING_SIZE));
+    float b = boardBattery();
+    Serial.printf("RX ok %u, defekt %u, BLE %s, Puffer %u, Akku %s%d%%\n", rxOk, rxBad,
+                  bleConnected ? "verbunden" : "getrennt", (unsigned)((ringHead + RING_SIZE - ringTail) % RING_SIZE),
+                  b < 0 ? "?" : "", b < 0 ? 0 : (int)lround(b * 100));
   }
 }

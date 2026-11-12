@@ -228,3 +228,21 @@ test('Rundkurs mit erlaubtem Start in der Verlaengerung: nur der erste Durchgang
   assert.strictEqual(r.status, 'DNF');                       // 2. Durchgang bei x = 80 zaehlt nicht
   assert.ok(r.warnings.some((w) => /zaehlt nicht fuer das Ende der Runde 1/.test(w)), r.warnings.join(' | '));
 });
+
+test('GPS-Rauschen im Stillstand erzeugt keine Linienkreuzung, langsames Driften schon', () => {
+  const line = { a: { lat: 46.8400, lon: 10.5000 }, b: { lat: 46.8400, lon: 10.5010 }, mark: { lat: 46.8420, lon: 10.5005 } };
+  const pl = T.prepareLine(line);
+  const t0 = 1790000000000;
+  // Boot steht 2 m hinter der Linie (Vorstartseite), Positionen springen +-10 m ueber die Linie, Tempo ~0
+  const still = [];
+  for (let i = 0; i < 60; i += 1) still.push({ ts: t0 + i * 1000, lat: 46.8400 + (((i * 37) % 11) - 5) * 0.00002, lon: 10.5005, speed: 0.05 });
+  const norm = T.normalizeFixes(still);
+  assert.ok(norm.length < still.length * 0.6, `Rauschen wird ausgeduennt (${norm.length} von ${still.length})`);
+  assert.strictEqual(T.findCrossings(pl, norm).length, 0, 'keine falsche Kreuzung');
+  assert.ok(T.findCrossings(pl, T.normalizeFixes(still.map(({ speed, ...f }) => f))).length > 10, 'ohne Tempo wird nichts verworfen');
+  // Langsam driftendes Boot (0.3 m/s) kreuzt die Linie: Kreuzung bleibt erhalten
+  const drift = [];
+  for (let i = 0; i < 40; i += 1) drift.push({ ts: t0 + i * 1000, lat: 46.8400 - 0.00001 + i * 0.3 / 110574, lon: 10.5005, speed: 0.3 });
+  assert.strictEqual(T.normalizeFixes(drift).length, drift.length);
+  assert.strictEqual(T.findCrossings(pl, drift).length, 1);
+});
