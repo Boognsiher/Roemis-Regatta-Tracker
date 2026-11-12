@@ -57,3 +57,27 @@ test('Konfigurations-Ablage pro Tracker: speichern, lesen, mit dem Tracker loesc
   store.deleteTracker(t.id);
   assert.strictEqual(store.getConfig(t.id), null);
 });
+
+test('Lebenszeichen ohne Fix: alte Position bleibt, ohne Position nichts angezeigt, Historie unberuehrt', () => {
+  const t = store.createTracker('HB');
+  // noch nie eine Position: Status wird gemerkt, aber es gibt keine Position
+  store.recordStatus(t.id, { ts: Date.now(), battery: 0.5 });
+  let pub = store.getPublicTracker(t.id);
+  assert.strictEqual(pub.latest, null);
+  assert.strictEqual(pub.status.battery, 0.5);
+  assert.strictEqual(pub.noFix, true);
+  assert.strictEqual(store.readHistoryCached(t.id).length, 0);
+  // mit alter Position: bleibt unveraendert
+  store.recordPosition(t.id, { lat: 47, lon: 10, ts: Date.now() - 5 * 60 * 1000, battery: 0.9 });
+  store.recordStatus(t.id, { ts: Date.now(), battery: 0.45, rssi: -80 });
+  pub = store.getPublicTracker(t.id);
+  assert.strictEqual(pub.latest.lat, 47);
+  assert.strictEqual(pub.status.battery, 0.45);
+  assert.strictEqual(pub.noFix, true);
+  assert.strictEqual(pub.online, true);
+  assert.strictEqual(store.readHistoryCached(t.id).length, 1);
+  // frische Position: kein noFix mehr
+  store.recordPosition(t.id, { lat: 47.1, lon: 10, ts: Date.now() });
+  assert.strictEqual(store.getPublicTracker(t.id).noFix, false);
+  assert.strictEqual(store.recordStatus('gibtsnicht', { ts: 1 }), null);
+});

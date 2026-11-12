@@ -113,7 +113,8 @@
         <div class="boat-info">
           <div class="boat-name">${escapeHtml(t.name)}</div>
           <div class="boat-meta">
-            ${t.latest ? `${fmtAge(t.latest.ts)} · ${fmtSpeed(t.latest.speed)}` : 'noch keine Position'}
+            ${t.noFix ? `online, kein GPS-Fix${t.status && t.status.battery != null ? ` · Akku ${Math.round(t.status.battery * 100)}%` : ''}${t.latest ? ` · letzte Position ${fmtAge(t.latest.ts)}` : ''}`
+              : t.latest ? `${fmtAge(t.latest.ts)} · ${fmtSpeed(t.latest.speed)}` : 'noch keine Position'}
           </div>
         </div>
       </div>

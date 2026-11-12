@@ -82,6 +82,21 @@ void fillPacket(TrackerPacket &p, const Fix &f) {
   p.hdop10 = f.hdop < 0 ? 255 : (uint8_t)constrain((long)lround(f.hdop * 10), 0L, 254L);
 }
 
+/** Lebenszeichen ohne GPS-Fix: Position = Platzhalter, Akku gueltig. Der Server behaelt dann die alte Position. */
+void fillNoFixPacket(TrackerPacket &p) {
+  p.magic = PKT_MAGIC;
+  p.id = TRACKER_ID;
+  p.epochSec = 0;
+  p.centisec = 0;
+  p.lat = PKT_NOFIX_COORD;
+  p.lon = PKT_NOFIX_COORD;
+  p.speedCms = 0;
+  p.headingDeg10 = 0xFFFF;
+  float b = boardBattery();
+  p.battPct = b < 0 ? 255 : (uint8_t)lround(b * 100);
+  p.hdop10 = 255;
+}
+
 uint32_t txCount = 0;
 bool loraOk = false;
 uint64_t lastTxCycle = UINT64_MAX;
@@ -221,6 +236,22 @@ void loop() {
         if (st == RADIOLIB_ERR_NONE) txCount++;
         else Serial.printf("TX Fehler %d\n", st);
       }
+    }
+  }
+
+  // Kein frischer Fix: trotzdem regelmaessig ein Lebenszeichen (Akku) senden, damit man am Master/Server sieht, dass der Tracker laeuft.
+  {
+    static uint32_t lastHeartbeat = 0;
+    static uint32_t nextHeartbeatIn = 3000;   // erstes Lebenszeichen kurz nach dem Start
+    bool fixFresh = lastFix.valid && now && (now - lastFix.tsMs < 4000);
+    if (loraOk && !fixFresh && millis() - lastHeartbeat >= nextHeartbeatIn) {
+      lastHeartbeat = millis();
+      nextHeartbeatIn = HEARTBEAT_MS + (uint32_t)random(HEARTBEAT_JITTER_MS);
+      TrackerPacket p;
+      fillNoFixPacket(p);
+      int st = radio.transmit((uint8_t *)&p, sizeof(p));
+      if (st == RADIOLIB_ERR_NONE) txCount++;
+      else Serial.printf("TX Fehler %d\n", st);
     }
   }
 
