@@ -29,6 +29,10 @@ Notifications abonnieren. Jede Notification ist **ein Paket mit 24 Byte, Little-
 | 21 | i16 | RSSI in dBm |
 | 23 | i8 | SNR*4 in dB |
 
+**Lebenszeichen ohne GPS-Fix:** Hat ein Tracker keinen Fix, sendet er trotzdem etwa alle 10 s ein Paket mit Breite = Laenge =
+`-2147483648` (INT32_MIN) und GPS-Zeit 0. Akku (Byte 19) sowie RSSI/SNR sind gueltig. Die App darf diese Pakete nicht als Position
+behandeln (nicht als 0/0 anzeigen), sondern leitet sie als Status weiter (siehe unten).
+
 Umrechnung: `ts_ms = epochSec*1000 + centisec*10`, `lat = i32/1e6`, `lon = i32/1e6`, `speed_ms = cms/100`,
 `heading = deg10/10` (oder null), `battery = pct/100` (oder null). Pakete mit `|lat|>90` oder `|lon|>180` verwerfen.
 Die Zeit kommt vom GPS des Trackers. Sie ist die Grundlage der offiziellen Zeitmessung: **nicht durch die Handy-Zeit ersetzen.**
@@ -46,6 +50,9 @@ Content-Type: application/json
 ] }
 ```
 
+- Lebenszeichen ohne Fix: `{ "id": 2, "fix": false, "seenTs": <Empfangszeit des Handys in ms>, "battery": 0.82, "rssi": -90, "snr": 6.5 }`.
+  Der Server laesst die Position unveraendert (eine fruehere bleibt stehen, ohne fruehere wird keine angezeigt, nichts kommt in die
+  Historie) und merkt sich nur Status (Akku, Empfang, zuletzt gehoert). Die Antwort enthaelt dann `heartbeats` statt `accepted`.
 - `id` = LoRa-Nr aus dem Paket. Sie muss im Admin einem Tracker zugewiesen sein, sonst steht sie in der Antwort unter `unknown`.
 - Statt `id` kann `trackerId` (Tracker-ID aus dem Admin) gesendet werden, z.B. fuer die eigene Handy-GPS-Position.
 - Optionale Felder: `speed` (m/s), `heading` (Grad), `battery` (0..1), `accuracy` (m), alles sonst weglassen oder `null`.

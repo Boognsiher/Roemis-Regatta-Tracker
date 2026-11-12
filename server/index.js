@@ -262,7 +262,17 @@ app.post('/api/gateway/positions', requireGateway, (req, res) => {
   const unknown = new Set();
   let accepted = 0;
   const maxTs = Date.now() + 5 * 60 * 1000;
+  const heartbeats = new Set();
   for (const p of list) {
+    // Lebenszeichen ohne GPS-Fix: Position nicht anruehren, nur Status (Akku, Empfang) merken
+    if (p && p.fix === false) {
+      const tr = p.trackerId ? store.getTracker(p.trackerId) : store.getTrackerByLoraId(p.id);
+      if (!tr) { unknown.add(p.trackerId || p.id); continue; }
+      const seen = isFiniteNumber(p.seenTs) && p.seenTs <= maxTs ? p.seenTs : Date.now();
+      store.recordStatus(tr.id, { ts: seen, battery: p.battery, rssi: p.rssi, snr: p.snr });
+      heartbeats.add(tr.id);
+      continue;
+    }
     if (!p || !isFiniteNumber(p.lat) || !isFiniteNumber(p.lon) || !isFiniteNumber(p.ts)) continue;
     if (Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180 || p.ts > maxTs) continue;
     const tracker = p.trackerId ? store.getTracker(p.trackerId) : store.getTrackerByLoraId(p.id);
@@ -280,7 +290,8 @@ app.post('/api/gateway/positions', requireGateway, (req, res) => {
     accepted += 1;
   }
   for (const id of touched) broadcast({ type: 'position', tracker: store.getPublicTracker(id, { trail: false }) });
-  res.json({ ok: true, accepted, unknown: [...unknown] });
+  for (const id of heartbeats) if (!touched.has(id)) broadcast({ type: 'position', tracker: store.getPublicTracker(id, { trail: false }) });
+  res.json({ ok: true, accepted, heartbeats: heartbeats.size, unknown: [...unknown] });
 });
 
 // ---------- Admin-API (Tracker anlegen/verwalten) ----------

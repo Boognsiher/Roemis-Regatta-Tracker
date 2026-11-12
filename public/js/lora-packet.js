@@ -12,6 +12,7 @@
  * 17  u16  Kurs in 0.1 Grad (0xFFFF = unbekannt)
  * 19  u8   Akku in % (255 = unbekannt)
  * 20  u8   HDOP * 10 (255 = unbekannt)
+ * Lebenszeichen ohne GPS-Fix: Breite und Laenge = INT32_MIN (-2147483648), GPS-Zeit = 0. Akku (und RSSI/SNR) sind trotzdem gueltig.
  * Der Master haengt beim Weiterreichen ans Handy an (24 Byte gesamt):
  * 21  i16  RSSI dBm
  * 23  i8   SNR * 4 dB
@@ -23,20 +24,25 @@
   'use strict';
   const MAGIC = 0xA7;
   const LEN = 21;
+  const NO_FIX = -2147483648;   // INT32_MIN in Breite und Laenge: Lebenszeichen ohne GPS-Fix
 
   function decode(bytes) {
     const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     if (u8.length < LEN || u8[0] !== MAGIC) return null;
     const v = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-    const lat = v.getInt32(7, true) / 1e6;
-    const lon = v.getInt32(11, true) / 1e6;
-    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    const rawLat = v.getInt32(7, true);
+    const rawLon = v.getInt32(11, true);
+    const fix = !(rawLat === NO_FIX && rawLon === NO_FIX);
+    const lat = fix ? rawLat / 1e6 : null;
+    const lon = fix ? rawLon / 1e6 : null;
+    if (fix && (Math.abs(lat) > 90 || Math.abs(lon) > 180)) return null;
     const heading = v.getUint16(17, true);
     const bat = v.getUint8(19);
     const hdop = v.getUint8(20);
     const out = {
       id: v.getUint8(1),
-      ts: v.getUint32(2, true) * 1000 + v.getUint8(6) * 10,
+      fix,
+      ts: fix ? v.getUint32(2, true) * 1000 + v.getUint8(6) * 10 : null,
       lat,
       lon,
       speed: v.getUint16(15, true) / 100, // m/s
@@ -57,10 +63,11 @@
     const v = new DataView(u8.buffer);
     v.setUint8(0, MAGIC);
     v.setUint8(1, p.id);
-    v.setUint32(2, Math.floor(p.ts / 1000), true);
-    v.setUint8(6, Math.round((p.ts % 1000) / 10) % 100);
-    v.setInt32(7, Math.round(p.lat * 1e6), true);
-    v.setInt32(11, Math.round(p.lon * 1e6), true);
+    const noFix = p.fix === false;
+    v.setUint32(2, noFix ? 0 : Math.floor(p.ts / 1000), true);
+    v.setUint8(6, noFix ? 0 : Math.round((p.ts % 1000) / 10) % 100);
+    v.setInt32(7, noFix ? NO_FIX : Math.round(p.lat * 1e6), true);
+    v.setInt32(11, noFix ? NO_FIX : Math.round(p.lon * 1e6), true);
     v.setUint16(15, Math.round((p.speed || 0) * 100), true);
     v.setUint16(17, p.heading == null ? 0xFFFF : Math.round(p.heading * 10), true);
     v.setUint8(19, p.battery == null ? 255 : Math.round(p.battery * 100));

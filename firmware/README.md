@@ -135,6 +135,10 @@ Beim Einschalten kommt eine **Lampenprobe** (Rot, Gelb, Gruen nacheinander): so 
 
 **Master:** Gruen = Handy per Bluetooth verbunden, Gelb blinkt = wartet auf Handy, Rot = LoRa-Init fehlgeschlagen.
 
+**Lebenszeichen ohne GPS-Fix:** Ein LoRa-Tracker sendet auch ohne Fix alle ca. 10 s ein kurzes Paket (Position = Platzhalter, Akku gueltig).
+Der Master zeigt dann `RX #n kein GPS-Fix, Akku xx%`, der Server behaelt die alte Position (ohne fruehere Position wird nichts angezeigt) und
+zeigt im Dashboard "online, kein GPS-Fix" mit Akkustand. So siehst du, dass ein Tracker laeuft, bevor er einen Fix hat.
+
 **Taste** (am T-Beam: User-Taste GPIO38; am Heltec: PRG), nur Logger/Tracker:
 - **Kurz druecken:** 10 s Dauer-Anzeige (Gruen = alles hochgeladen, Gelb = Daten warten noch, Rot = Fehler/Akku) und
   Upload sofort versuchen.
