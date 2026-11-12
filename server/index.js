@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { createAuthGuard } = require('./authguard');
 const { createSessions } = require('./session');
 const exporter = require('./export');
+const apiVersion = require('./apiversion');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
@@ -28,6 +29,8 @@ if (!ADMIN_TOKEN) {
 }
 
 const app = express();
+// Jede API-Antwort nennt die Schnittstellenversion (Header), damit Clients Abweichungen bemerken.
+app.use('/api', (req, res, next) => { res.set('X-API-Version', `${apiVersion.API_VERSION}.${apiVersion.API_MINOR}`); next(); });
 app.disable('x-powered-by');
 // Einfache Sicherheits-Header (keine Einbettung in fremde Seiten, kein Content-Sniffing).
 // Referrer: nur die Herkunft (ohne Pfad) an fremde Server - die OSM-Kartenserver verlangen einen Referer und sperren sonst (403).
@@ -107,6 +110,9 @@ app.post('/api/logout', (req, res) => {
   res.set('Set-Cookie', sessions.clearCookieHeader(isSecure(req)));
   res.json({ ok: true });
 });
+
+// Oeffentlich und ohne Login: Clients (Segeluhr, Gateway) pruefen damit, ob die Schnittstelle zu ihnen passt.
+app.get('/api/version', (req, res) => res.json(apiVersion.info()));
 
 app.get('/api/session', (req, res) => {
   res.json({ enabled: sessions.enabled, role: sessions.fromRequest(req) });

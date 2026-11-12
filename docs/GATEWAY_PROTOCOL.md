@@ -60,3 +60,23 @@ Content-Type: application/json
 - Bildschirm/Hintergrund: eine native App sollte als Foreground-Service laufen, damit Android die BLE-Verbindung nicht trennt.
 - Die Segeluhr-App kann ausserdem als eigener Tracker senden (`POST /api/trackers/<id>/position`, siehe README) und ihre Konfiguration unter
   `/api/trackers/<id>/config` ablegen.
+
+## 4. Versionierung
+
+Aktuelle API-Version: 1.0
+
+Der Server nennt sie unter `GET /api/version` (ohne Login): `{ "api": 1, "minor": 0, "name": "roemis-regatta-tracker" }`
+und in jeder `/api/*`-Antwort im Header `X-API-Version: 1.0`.
+
+- **api (major)** steigt nur bei inkompatiblen Aenderungen (Feld/Endpunkt entfernt oder umgedeutet). Clients mit anderer Major-Version
+  sollen **nicht senden**, sondern den Nutzer warnen.
+- **minor** steigt bei rueckwaertskompatiblen Ergaenzungen (neue optionale Felder/Endpunkte). Ein Client darf einen hoeheren Minor-Wert
+  des Servers ignorieren; ein Server mit niedrigerem Minor als vom Client benoetigt -> Client warnt, nutzt nur die alten Felder.
+- Das Funkpaket (Abschnitt 1) hat sein eigenes Format (`magic 0xA7`, 21/24 Byte) und aendert sich nur zusammen mit
+  `firmware/include/protocol.h` und `public/js/lora-packet.js`.
+
+### Aenderungsverlauf
+
+| Version | Aenderung |
+|---|---|
+| 1.0 | Ausgangsstand: `/api/trackers/<id>/position(s)`, `/api/trackers/<id>/config`, `/api/gateway/positions`, `/api/version` |

@@ -74,7 +74,7 @@ Ablauf:
 
 Die Android-App "Segeluhr" nutzt dieselbe Tracker-API wie die Handy-Seite: Tracker-Link aus dem Admin einfuegen, dann sendet sie ihre
 Position an `POST /api/trackers/<id>/position` (`Authorization: Bearer <token>`, Felder `lat`, `lon`, `speed`, `heading`, `battery`, `ts`
-in ms; `ts` = GPS-Zeit, damit die Zeitmessung stimmt). Zusaetzlich legt der Server pro Tracker die Konfiguration der App ab
+in ms; `ts` = GPS-Zeit, damit die Zeitmessung stimmt). Der Server meldet seine Schnittstellenversion unter `GET /api/version` (Details: `docs/GATEWAY_PROTOCOL.md`, Abschnitt Versionierung); die App prueft sie vor dem Senden. Zusaetzlich legt der Server pro Tracker die Konfiguration der App ab
 (Wegpunkte, Seegrenze, Boots-Profile; beliebiges JSON-Objekt, max. 500 KB):
 
 ```
