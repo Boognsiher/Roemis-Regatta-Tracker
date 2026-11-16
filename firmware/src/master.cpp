@@ -150,7 +150,8 @@ void loop() {
       rxOk++;
       lastId = m.pkt.id;
       lastRssi = m.rssi;
-      Serial.printf("RX #%d  lat %.5f lon %.5f  %d dBm  SNR %.1f\n", m.pkt.id, m.pkt.lat / 1e6, m.pkt.lon / 1e6, m.rssi, m.snr4 / 4.0f);
+      if (m.pkt.lat == PKT_NOFIX_COORD) Serial.printf("RX #%d  kein GPS-Fix, Akku %u%%  %d dBm  SNR %.1f\n", m.pkt.id, m.pkt.battPct, m.rssi, m.snr4 / 4.0f);
+      else Serial.printf("RX #%d  lat %.5f lon %.5f  %d dBm  SNR %.1f\n", m.pkt.id, m.pkt.lat / 1e6, m.pkt.lon / 1e6, m.rssi, m.snr4 / 4.0f);
     } else {
       rxBad++;
     }

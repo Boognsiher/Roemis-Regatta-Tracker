@@ -277,6 +277,31 @@ function recordPosition(id, pos) {
   return entry;
 }
 
+/**
+ * Lebenszeichen eines Trackers ohne GPS-Fix (Akku, Empfang). Die Position bleibt unveraendert: Gibt es eine fruehere Position, bleibt
+ * sie stehen; gibt es keine, wird nichts angezeigt. Es wird nichts in die Historie geschrieben.
+ */
+function recordStatus(id, st) {
+  if (!trackers[id]) return null;
+  if (!positions[id]) positions[id] = { latest: null, trail: [] };
+  const ts = Number.isFinite(st.ts) ? st.ts : Date.now();
+  const prev = positions[id].status;
+  if (prev && prev.ts > ts) return prev;
+  positions[id].status = {
+    ts,
+    battery: Number.isFinite(st.battery) ? st.battery : (prev ? prev.battery : null),
+    rssi: Number.isFinite(st.rssi) ? st.rssi : null,
+    snr: Number.isFinite(st.snr) ? st.snr : null
+  };
+  scheduleSave();
+  return positions[id].status;
+}
+
+/** Wann wurde zuletzt irgendetwas vom Tracker gehoert (Position oder Lebenszeichen)? */
+function lastSeenTs(pos) {
+  return Math.max((pos && pos.latest && pos.latest.ts) || 0, (pos && pos.status && pos.status.ts) || 0);
+}
+
 function isStale(entry) {
   if (!entry) return true;
   return Date.now() - entry.ts > STALE_AFTER_MS;
@@ -309,6 +334,12 @@ function getPublicTracker(id, { trail = true } = {}) {
     latest: pos.latest,
     stale: isStale(pos.latest)
   };
+  if (pos.status) {
+    out.status = pos.status;
+    out.online = Date.now() - lastSeenTs(pos) <= STALE_AFTER_MS;
+    // Lebenszeichen kommen, aber die letzte Position ist veraltet (oder es gab noch nie eine): Tracker hat keinen GPS-Fix
+    out.noFix = out.online && out.stale;
+  }
   if (trail) out.trail = decimate(timing.dropJitter(pos.trail), PUBLIC_TRAIL_POINTS);
   return out;
 }
@@ -353,6 +384,7 @@ module.exports = {
   verifyToken,
   renameTracker,
   recordPosition,
+  recordStatus,
   getPublicTracker,
   listPublicTrackers,
   clearTrail,

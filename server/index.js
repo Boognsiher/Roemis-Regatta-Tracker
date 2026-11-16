@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { createAuthGuard } = require('./authguard');
 const { createSessions } = require('./session');
 const exporter = require('./export');
+const apiVersion = require('./apiversion');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
@@ -28,6 +29,8 @@ if (!ADMIN_TOKEN) {
 }
 
 const app = express();
+// Jede API-Antwort nennt die Schnittstellenversion (Header), damit Clients Abweichungen bemerken.
+app.use('/api', (req, res, next) => { res.set('X-API-Version', `${apiVersion.API_VERSION}.${apiVersion.API_MINOR}`); next(); });
 app.disable('x-powered-by');
 // Einfache Sicherheits-Header (keine Einbettung in fremde Seiten, kein Content-Sniffing).
 // Referrer: nur die Herkunft (ohne Pfad) an fremde Server - die OSM-Kartenserver verlangen einen Referer und sperren sonst (403).
@@ -107,6 +110,9 @@ app.post('/api/logout', (req, res) => {
   res.set('Set-Cookie', sessions.clearCookieHeader(isSecure(req)));
   res.json({ ok: true });
 });
+
+// Oeffentlich und ohne Login: Clients (Segeluhr, Gateway) pruefen damit, ob die Schnittstelle zu ihnen passt.
+app.get('/api/version', (req, res) => res.json(apiVersion.info()));
 
 app.get('/api/session', (req, res) => {
   res.json({ enabled: sessions.enabled, role: sessions.fromRequest(req) });
@@ -256,7 +262,17 @@ app.post('/api/gateway/positions', requireGateway, (req, res) => {
   const unknown = new Set();
   let accepted = 0;
   const maxTs = Date.now() + 5 * 60 * 1000;
+  const heartbeats = new Set();
   for (const p of list) {
+    // Lebenszeichen ohne GPS-Fix: Position nicht anruehren, nur Status (Akku, Empfang) merken
+    if (p && p.fix === false) {
+      const tr = p.trackerId ? store.getTracker(p.trackerId) : store.getTrackerByLoraId(p.id);
+      if (!tr) { unknown.add(p.trackerId || p.id); continue; }
+      const seen = isFiniteNumber(p.seenTs) && p.seenTs <= maxTs ? p.seenTs : Date.now();
+      store.recordStatus(tr.id, { ts: seen, battery: p.battery, rssi: p.rssi, snr: p.snr });
+      heartbeats.add(tr.id);
+      continue;
+    }
     if (!p || !isFiniteNumber(p.lat) || !isFiniteNumber(p.lon) || !isFiniteNumber(p.ts)) continue;
     if (Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180 || p.ts > maxTs) continue;
     const tracker = p.trackerId ? store.getTracker(p.trackerId) : store.getTrackerByLoraId(p.id);
@@ -274,7 +290,8 @@ app.post('/api/gateway/positions', requireGateway, (req, res) => {
     accepted += 1;
   }
   for (const id of touched) broadcast({ type: 'position', tracker: store.getPublicTracker(id, { trail: false }) });
-  res.json({ ok: true, accepted, unknown: [...unknown] });
+  for (const id of heartbeats) if (!touched.has(id)) broadcast({ type: 'position', tracker: store.getPublicTracker(id, { trail: false }) });
+  res.json({ ok: true, accepted, heartbeats: heartbeats.size, unknown: [...unknown] });
 });
 
 // ---------- Admin-API (Tracker anlegen/verwalten) ----------

@@ -36,7 +36,7 @@
       return `<tr><td>${id}</td><td>${t ? esc(t.name) : '<span class="warn-text">unbekannt</span>'}</td>
         <td class="num">${age < 60 ? `${age}s` : `${Math.round(age / 60)}min`}</td><td class="num">${h.count}</td>
         <td class="num">${h.rssi ?? '–'}</td><td class="num">${h.snr ?? '–'}</td>
-        <td class="num">${h.battery != null ? Math.round(h.battery * 100) + '%' : '–'}</td></tr>`;
+        <td class="num">${h.battery != null ? Math.round(h.battery * 100) + '%' : '–'}${h.fix === false ? ' · kein GPS' : ''}</td></tr>`;
     });
     $('heard').innerHTML = rows.join('') || '<tr><td colspan="7" class="hint">Noch nichts empfangen.</td></tr>';
   }
@@ -51,8 +51,13 @@
     if (!p) { bad += 1; counters(); return; }
     rx += 1;
     const h = heard.get(p.id) || { count: 0 };
-    Object.assign(h, { seen: Date.now(), count: h.count + 1, rssi: p.rssi, snr: p.snr, battery: p.battery });
+    Object.assign(h, { seen: Date.now(), count: h.count + 1, rssi: p.rssi, snr: p.snr, battery: p.battery, fix: p.fix });
     heard.set(p.id, h);
+    if (!p.fix) {   // Lebenszeichen ohne GPS-Fix: nur Status (Akku, Empfang), keine Position
+      enqueue({ id: p.id, fix: false, seenTs: Date.now(), battery: p.battery, rssi: p.rssi, snr: p.snr });
+      persist(); counters();
+      return;
+    }
     enqueue({
       id: p.id, lat: p.lat, lon: p.lon, ts: p.ts, speed: p.speed, heading: p.heading,
       battery: p.battery, accuracy: p.hdop != null ? p.hdop * 5 : null // grob: HDOP * ~5 m

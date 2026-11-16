@@ -135,6 +135,10 @@ Beim Einschalten kommt eine **Lampenprobe** (Rot, Gelb, Gruen nacheinander): so 
 
 **Master:** Gruen = Handy per Bluetooth verbunden, Gelb blinkt = wartet auf Handy, Rot = LoRa-Init fehlgeschlagen.
 
+**Lebenszeichen ohne GPS-Fix:** Ein LoRa-Tracker sendet auch ohne Fix alle ca. 10 s ein kurzes Paket (Position = Platzhalter, Akku gueltig).
+Der Master zeigt dann `RX #n kein GPS-Fix, Akku xx%`, der Server behaelt die alte Position (ohne fruehere Position wird nichts angezeigt) und
+zeigt im Dashboard "online, kein GPS-Fix" mit Akkustand. So siehst du, dass ein Tracker laeuft, bevor er einen Fix hat.
+
 **Taste** (am T-Beam: User-Taste GPIO38; am Heltec: PRG), nur Logger/Tracker:
 - **Kurz druecken:** 10 s Dauer-Anzeige (Gruen = alles hochgeladen, Gelb = Daten warten noch, Rot = Fehler/Akku) und
   Upload sofort versuchen.
@@ -192,7 +196,12 @@ und Datenblatt pruefen**, vor allem `LORA_TCXO_V` (Module mit TCXO brauchen 1.8,
 - **Zeitfenster-Verfahren (TDMA):** Jeder Tracker sendet nur in seinem Fenster:
   `(GPS-Zeit mod 2000 ms)` im Bereich `(TRACKER_ID-1) * 100 ms`. Die GPS-Zeit hat jeder Tracker selbst, es braucht
   keine Verbindung zum Master. Dadurch kollidieren die Boote nicht. Bis 20 Boote alle 2 s (`CYCLE_MS = SLOT_MS * Bootszahl`).
-- Ohne PPS-Verdrahtung ist die Fenstergenauigkeit nur etwa +-200 ms -> Kollisionen moeglich.
+- **LoRa-Nr (`TRACKER_ID`) muss 1 bis 20 sein** (`CYCLE_MS / SLOT_MS`) und darf nur einmal vergeben werden. Der Build bricht sonst mit einer
+  Fehlermeldung ab (`static_assert`); mehr Boote: `CYCLE_MS` in `config.h` auf `SLOT_MS * Bootszahl` erhoehen (Position dann seltener).
+- **Lebenszeichen ohne Fix** kennen die GPS-Zeit nicht und haben daher kein Fenster. Sie hoeren vor dem Senden kurz auf das Band
+  (`scanChannel`, LoRa-Preamble erkannt = belegt) und versuchen es bei belegtem Band nach 0,1-1 s erneut, damit sie keine Positionspakete
+  zerstoeren. Positionspakete selbst senden ohne Hoeren, im festen Fenster.
+- Ohne PPS-Verdrahtung ist die Fenstergenauigkeit nur etwa +-200 ms -> Kollisionen moeglich (beim T-Beam ist PPS auf GPIO 37 belegt).
 - Die **Positionszeit** im Paket kommt immer direkt aus dem GPS-Datensatz und ist unabhaengig von Funk-Latenz.
 - LoRa hat keine Quittung: einzelne Pakete koennen fehlen. Darum schreibt jeder Tracker zusaetzlich jede
   Sekunde ins Flash-Log (siehe unten).

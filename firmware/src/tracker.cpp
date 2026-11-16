@@ -28,6 +28,10 @@
 #include "display.h"
 #include "trackerled.h"
 
+// Jeder Tracker hat ein festes Sendefenster (TRACKER_ID-1)*SLOT_MS im Zyklus. Eine groessere Nr. wuerde auf das Fenster eines anderen fallen.
+static_assert(TRACKER_ID >= 1 && TRACKER_ID <= CYCLE_MS / SLOT_MS,
+              "TRACKER_ID muss zwischen 1 und CYCLE_MS/SLOT_MS (Standard 20) liegen, sonst kollidiert das Sendefenster mit einem anderen Tracker");
+
 SX1262 radio = new Module(LORA_NSS, LORA_DIO1, LORA_RST, LORA_BUSY);
 TinyGPSPlus gps;
 HardwareSerial GPSSerial(1);
@@ -80,6 +84,21 @@ void fillPacket(TrackerPacket &p, const Fix &f) {
   float b = boardBattery();
   p.battPct = b < 0 ? 255 : (uint8_t)lround(b * 100);
   p.hdop10 = f.hdop < 0 ? 255 : (uint8_t)constrain((long)lround(f.hdop * 10), 0L, 254L);
+}
+
+/** Lebenszeichen ohne GPS-Fix: Position = Platzhalter, Akku gueltig. Der Server behaelt dann die alte Position. */
+void fillNoFixPacket(TrackerPacket &p) {
+  p.magic = PKT_MAGIC;
+  p.id = TRACKER_ID;
+  p.epochSec = 0;
+  p.centisec = 0;
+  p.lat = PKT_NOFIX_COORD;
+  p.lon = PKT_NOFIX_COORD;
+  p.speedCms = 0;
+  p.headingDeg10 = 0xFFFF;
+  float b = boardBattery();
+  p.battPct = b < 0 ? 255 : (uint8_t)lround(b * 100);
+  p.hdop10 = 255;
 }
 
 uint32_t txCount = 0;
@@ -217,6 +236,28 @@ void loop() {
       if (now - lastFix.tsMs < 4000) { // keine veralteten Positionen senden
         TrackerPacket p;
         fillPacket(p, lastFix);
+        int st = radio.transmit((uint8_t *)&p, sizeof(p));
+        if (st == RADIOLIB_ERR_NONE) txCount++;
+        else Serial.printf("TX Fehler %d\n", st);
+      }
+    }
+  }
+
+  // Kein frischer Fix: trotzdem regelmaessig ein Lebenszeichen (Akku) senden, damit man am Master/Server sieht, dass der Tracker laeuft.
+  {
+    static uint32_t lastHeartbeat = 0;
+    static uint32_t nextHeartbeatIn = 3000;   // erstes Lebenszeichen kurz nach dem Start
+    bool fixFresh = lastFix.valid && now && (now - lastFix.tsMs < 4000);
+    if (loraOk && !fixFresh && millis() - lastHeartbeat >= nextHeartbeatIn) {
+      lastHeartbeat = millis();
+      // Zuerst hoeren: Ohne GPS-Zeit gibt es kein Sendefenster, das Lebenszeichen darf aber keine Positionspakete anderer Boote stoeren.
+      // Ist das Band belegt (LoRa-Preamble erkannt), kurz warten und neu versuchen.
+      if (radio.scanChannel() == RADIOLIB_LORA_DETECTED) {
+        nextHeartbeatIn = 100 + (uint32_t)random(900);
+      } else {
+        nextHeartbeatIn = HEARTBEAT_MS + (uint32_t)random(HEARTBEAT_JITTER_MS);
+        TrackerPacket p;
+        fillNoFixPacket(p);
         int st = radio.transmit((uint8_t *)&p, sizeof(p));
         if (st == RADIOLIB_ERR_NONE) txCount++;
         else Serial.printf("TX Fehler %d\n", st);

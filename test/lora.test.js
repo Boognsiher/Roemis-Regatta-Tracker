@@ -29,3 +29,15 @@ test('Unbekannte Werte, falsche Magic, RSSI-Anhang', () => {
   assert.strictEqual(m.rssi, -97);
   assert.strictEqual(m.snr, -5);
 });
+
+test('Lebenszeichen ohne GPS-Fix: Rundlauf, kein Fix, Akku gueltig', () => {
+  const d = P.decode(P.encode({ id: 4, fix: false, battery: 0.67 }));
+  assert.strictEqual(d.id, 4);
+  assert.strictEqual(d.fix, false);
+  assert.strictEqual(d.lat, null);
+  assert.strictEqual(d.lon, null);
+  assert.strictEqual(d.ts, null);
+  assert.ok(Math.abs(d.battery - 0.67) < 0.01);
+  const ok = P.decode(P.encode({ id: 4, ts: 1000, lat: 46.8, lon: 10.5 }));
+  assert.strictEqual(ok.fix, true);
+});

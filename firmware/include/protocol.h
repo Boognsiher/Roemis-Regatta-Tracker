@@ -5,6 +5,8 @@
  * Little-Endian (ESP32), 21 Byte.
  */
 #define PKT_MAGIC 0xA7
+// Lebenszeichen ohne GPS-Fix: lat und lon = PKT_NOFIX_COORD, epochSec/centisec = 0. Akku (battPct) ist trotzdem gueltig.
+#define PKT_NOFIX_COORD INT32_MIN
 
 struct __attribute__((packed)) TrackerPacket {
   uint8_t  magic;       // PKT_MAGIC

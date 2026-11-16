@@ -19,6 +19,11 @@
 // Zyklus = alle Tracker haben einmal gesendet. Bei 100 ms Fenstern passen 20 Boote in 2000 ms.
 #define SLOT_MS           100
 #define CYCLE_MS          2000     // = SLOT_MS * (max. Anzahl Boote)  -> hier 20 Boote, Position alle 2 s
+// Ohne GPS-Fix sendet der Tracker alle HEARTBEAT_MS (+ Zufall bis HEARTBEAT_JITTER_MS gegen Zusammenstoesse) ein Lebenszeichen mit Akkustand.
+#ifndef HEARTBEAT_MS
+#define HEARTBEAT_MS         10000
+#endif
+#define HEARTBEAT_JITTER_MS  2000
 // Mehr als 20 Boote? CYCLE_MS = SLOT_MS * Bootszahl (Position dann seltener).
 
 // ---------- BLE (Master -> Handy) ----------
