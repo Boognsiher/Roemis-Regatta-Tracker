@@ -111,7 +111,7 @@ void loop() {
   ownFix = gps.location.isValid() && gps.location.age() < 3000;
   // RMC-Satz abgeschlossen: eigene Position als Paket direkt in den Bluetooth-Puffer (verlustfrei, 1x pro Sekunde)
   if (gps.date.isUpdated() && gps.time.isUpdated()) {
-    if (gps.date.isValid() && gps.time.isValid() && gps.location.isValid() && gps.date.year() >= 2024) {
+    if (gps.date.isValid() && gps.time.isValid() && gps.location.isValid() && gps.location.age() < 3000 && gps.date.year() >= 2024) {
       uint64_t epochMs =
           (uint64_t)(daysFromCivil(gps.date.year(), gps.date.month(), gps.date.day()) * 86400LL +
                      gps.time.hour() * 3600 + gps.time.minute() * 60 + gps.time.second()) * 1000ULL +
@@ -206,5 +206,10 @@ void loop() {
     Serial.printf("RX ok %u, defekt %u, BLE %s, Puffer %u, Akku %s%d%%\n", rxOk, rxBad,
                   bleConnected ? "verbunden" : "getrennt", (unsigned)((ringHead + RING_SIZE - ringTail) % RING_SIZE),
                   b < 0 ? "?" : "", b < 0 ? 0 : (int)lround(b * 100));
+#ifdef OWN_TRACKER_ID
+    Serial.printf("Eigenes GPS: Fix %s, Sat %d, HDOP %.1f\n", ownFix ? "ja" : "nein",
+                  gps.satellites.isValid() ? (int)gps.satellites.value() : -1,
+                  gps.hdop.isValid() ? gps.hdop.hdop() : -1.0f);
+#endif
   }
 }
