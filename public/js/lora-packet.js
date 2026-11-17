@@ -13,6 +13,7 @@
  * 19  u8   Akku in % (255 = unbekannt)
  * 20  u8   HDOP * 10 (255 = unbekannt)
  * Lebenszeichen ohne GPS-Fix: Breite und Laenge = INT32_MIN (-2147483648), GPS-Zeit = 0. Akku (und RSSI/SNR) sind trotzdem gueltig.
+ * Dort steht in 'Geschwindigkeit' der GPS-Zustand: Hochbyte 0 = GPS stumm, 1 = Daten ohne Satelliten, 2 = Satelliten sichtbar (Suche); Tiefbyte = Satelliten.
  * Der Master haengt beim Weiterreichen ans Handy an (24 Byte gesamt):
  * 21  i16  RSSI dBm
  * 23  i8   SNR * 4 dB
@@ -50,6 +51,12 @@
       battery: bat === 255 ? null : bat / 100,
       hdop: hdop === 255 ? null : hdop / 10
     };
+    if (!fix) {
+      const w = v.getUint16(15, true);
+      out.speed = 0;
+      out.gpsState = w >> 8;     // 0 stumm, 1 keine Satelliten, 2 Suche
+      out.sats = w & 0xFF;
+    }
     if (u8.length >= 24) {
       out.rssi = v.getInt16(21, true);
       out.snr = v.getInt8(23) / 4;
@@ -68,7 +75,7 @@
     v.setUint8(6, noFix ? 0 : Math.round((p.ts % 1000) / 10) % 100);
     v.setInt32(7, noFix ? NO_FIX : Math.round(p.lat * 1e6), true);
     v.setInt32(11, noFix ? NO_FIX : Math.round(p.lon * 1e6), true);
-    v.setUint16(15, Math.round((p.speed || 0) * 100), true);
+    v.setUint16(15, noFix ? (((p.gpsState || 0) & 0xFF) << 8) | ((p.sats || 0) & 0xFF) : Math.round((p.speed || 0) * 100), true);
     v.setUint16(17, p.heading == null ? 0xFFFF : Math.round(p.heading * 10), true);
     v.setUint8(19, p.battery == null ? 255 : Math.round(p.battery * 100));
     v.setUint8(20, p.hdop == null ? 255 : Math.min(254, Math.round(p.hdop * 10)));

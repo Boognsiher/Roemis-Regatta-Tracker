@@ -86,6 +86,17 @@ void fillPacket(TrackerPacket &p, const Fix &f) {
   p.hdop10 = f.hdop < 0 ? 255 : (uint8_t)constrain((long)lround(f.hdop * 10), 0L, 254L);
 }
 
+/** GPS-Zustand fuer das Lebenszeichen: Hochbyte GPS_STATE_*, Tiefbyte Satelliten. "Stumm" = seit dem letzten Aufruf keine Zeichen vom GPS-Modul. */
+uint16_t gpsStatusWord() {
+  static uint32_t lastChars = 0;
+  uint32_t chars = gps.charsProcessed();
+  bool silent = (chars == lastChars);
+  lastChars = chars;
+  int sats = gps.satellites.isValid() ? (int)gps.satellites.value() : 0;
+  uint8_t state = silent ? GPS_STATE_SILENT : (sats > 0 ? GPS_STATE_SEARCH : GPS_STATE_NOSATS);
+  return (uint16_t)((state << 8) | (sats > 255 ? 255 : sats));
+}
+
 /** Lebenszeichen ohne GPS-Fix: Position = Platzhalter, Akku gueltig. Der Server behaelt dann die alte Position. */
 void fillNoFixPacket(TrackerPacket &p) {
   p.magic = PKT_MAGIC;
@@ -94,7 +105,7 @@ void fillNoFixPacket(TrackerPacket &p) {
   p.centisec = 0;
   p.lat = PKT_NOFIX_COORD;
   p.lon = PKT_NOFIX_COORD;
-  p.speedCms = 0;
+  p.speedCms = gpsStatusWord();
   p.headingDeg10 = 0xFFFF;
   float b = boardBattery();
   p.battPct = b < 0 ? 255 : (uint8_t)lround(b * 100);
@@ -102,6 +113,8 @@ void fillNoFixPacket(TrackerPacket &p) {
 }
 
 uint32_t txCount = 0;
+uint32_t hbSent = 0;       // gesendete Lebenszeichen
+uint32_t hbBusy = 0;       // Lebenszeichen verschoben, weil das Band belegt war
 bool loraOk = false;
 uint64_t lastTxCycle = UINT64_MAX;
 uint64_t lastLoggedTs = 0;
@@ -118,6 +131,8 @@ void handleSerial() {
                     txCount, (unsigned)logupEntries(), (unsigned)logupUploaded(),
                     b < 0 ? "?" : "", b < 0 ? 0 : (int)lround(b * 100),
                     HOTSPOT_UPLOAD ? upStateText() : "Upload aus");
+      Serial.printf("LoRa %s | Lebenszeichen gesendet %u, Band belegt %u | GPS-Zeichen %u, Pruefsummenfehler %u\n", loraOk ? "ok" : "AUS",
+                    hbSent, hbBusy, (unsigned)gps.charsProcessed(), (unsigned)gps.failedChecksum());
     }
   }
 }
@@ -143,7 +158,7 @@ void updateDisplay() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.printf("Regatta-Tracker, ID %d\n", TRACKER_ID);
+  Serial.printf("Regatta-Tracker, ID %d, Firmware %s %s (Lebenszeichen ohne Fix)\n", TRACKER_ID, __DATE__, __TIME__);
   boardInit(true);
   displayInit();
   trackerLedInit();
@@ -253,13 +268,14 @@ void loop() {
       // Zuerst hoeren: Ohne GPS-Zeit gibt es kein Sendefenster, das Lebenszeichen darf aber keine Positionspakete anderer Boote stoeren.
       // Ist das Band belegt (LoRa-Preamble erkannt), kurz warten und neu versuchen.
       if (radio.scanChannel() == RADIOLIB_LORA_DETECTED) {
+        hbBusy++;
         nextHeartbeatIn = 100 + (uint32_t)random(900);
       } else {
         nextHeartbeatIn = HEARTBEAT_MS + (uint32_t)random(HEARTBEAT_JITTER_MS);
         TrackerPacket p;
         fillNoFixPacket(p);
         int st = radio.transmit((uint8_t *)&p, sizeof(p));
-        if (st == RADIOLIB_ERR_NONE) txCount++;
+        if (st == RADIOLIB_ERR_NONE) { txCount++; hbSent++; }
         else Serial.printf("TX Fehler %d\n", st);
       }
     }

@@ -69,7 +69,7 @@ int lastId = 0, lastRssi = 0;
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("Regatta-Master");
+  Serial.printf("Regatta-Master, Firmware %s %s (Lebenszeichen ohne Fix)\n", __DATE__, __TIME__);
   boardInit(true);
   displayInit();
   ledsInit();
@@ -134,6 +134,33 @@ void loop() {
       ownPushed++;
     }
   }
+  // Eigenes Boot ohne frischen Fix: alle ~10 s ein Lebenszeichen (kein Fix, Akku, GPS-Zustand) in den BLE-Puffer
+  {
+    static uint32_t lastOwnHb = 0;
+    static uint32_t lastChars = 0;
+    if (!ownFix && millis() - lastOwnHb >= 10000) {
+      lastOwnHb = millis();
+      uint32_t chars = gps.charsProcessed();
+      int sats = gps.satellites.isValid() ? (int)gps.satellites.value() : 0;
+      uint8_t state = (chars == lastChars) ? GPS_STATE_SILENT : (sats > 0 ? GPS_STATE_SEARCH : GPS_STATE_NOSATS);
+      lastChars = chars;
+      MasterNotify m;
+      m.pkt.magic = PKT_MAGIC;
+      m.pkt.id = OWN_TRACKER_ID;
+      m.pkt.epochSec = 0;
+      m.pkt.centisec = 0;
+      m.pkt.lat = PKT_NOFIX_COORD;
+      m.pkt.lon = PKT_NOFIX_COORD;
+      m.pkt.speedCms = (uint16_t)((state << 8) | (sats > 255 ? 255 : sats));
+      m.pkt.headingDeg10 = 0xFFFF;
+      float b = boardBattery();
+      m.pkt.battPct = b < 0 ? 255 : (uint8_t)lround(b * 100);
+      m.pkt.hdop10 = 255;
+      m.rssi = 0;
+      m.snr4 = 0;
+      ringPush(m);
+    }
+  }
 #endif
 
   if (rxFlag) {
@@ -150,7 +177,9 @@ void loop() {
       rxOk++;
       lastId = m.pkt.id;
       lastRssi = m.rssi;
-      if (m.pkt.lat == PKT_NOFIX_COORD) Serial.printf("RX #%d  kein GPS-Fix, Akku %u%%  %d dBm  SNR %.1f\n", m.pkt.id, m.pkt.battPct, m.rssi, m.snr4 / 4.0f);
+      if (m.pkt.lat == PKT_NOFIX_COORD) Serial.printf("RX #%d  kein GPS-Fix (%s, %u Sat.), Akku %u%%  %d dBm  SNR %.1f\n", m.pkt.id,
+                                                      (m.pkt.speedCms >> 8) == GPS_STATE_SILENT ? "GPS stumm" : (m.pkt.speedCms >> 8) == GPS_STATE_NOSATS ? "keine Satelliten" : "Suche",
+                                                      m.pkt.speedCms & 0xFF, m.pkt.battPct, m.rssi, m.snr4 / 4.0f);
       else Serial.printf("RX #%d  lat %.5f lon %.5f  %d dBm  SNR %.1f\n", m.pkt.id, m.pkt.lat / 1e6, m.pkt.lon / 1e6, m.rssi, m.snr4 / 4.0f);
     } else {
       rxBad++;

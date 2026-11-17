@@ -81,3 +81,20 @@ test('Lebenszeichen ohne Fix: alte Position bleibt, ohne Position nichts angezei
   assert.strictEqual(store.getPublicTracker(t.id).noFix, false);
   assert.strictEqual(store.recordStatus('gibtsnicht', { ts: 1 }), null);
 });
+
+test('Lebenszeichen speichert GPS-Zustand, onlineMap zaehlt Tracker ohne Position als online', () => {
+  const t = store.createTracker('GpsState');
+  assert.strictEqual(store.onlineMap()[t.id], false);
+  store.recordStatus(t.id, { ts: Date.now(), battery: 0.4, gpsState: 0, sats: 0 });
+  let pub = store.getPublicTracker(t.id);
+  assert.strictEqual(pub.status.gpsState, 0);
+  assert.strictEqual(pub.online, true);
+  assert.strictEqual(store.onlineMap()[t.id], true);
+  store.recordStatus(t.id, { ts: Date.now(), gpsState: 2, sats: 5 });
+  pub = store.getPublicTracker(t.id);
+  assert.strictEqual(pub.status.gpsState, 2);
+  assert.strictEqual(pub.status.sats, 5);
+  assert.strictEqual(pub.status.battery, 0.4);   // Akku bleibt, wenn ein Lebenszeichen keinen mitbringt
+  store.recordStatus(t.id, { ts: Date.now(), gpsState: 7, sats: 999 });   // ungueltig -> null
+  assert.strictEqual(store.getPublicTracker(t.id).status.gpsState, null);
+});

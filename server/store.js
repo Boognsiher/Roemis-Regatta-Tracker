@@ -291,7 +291,9 @@ function recordStatus(id, st) {
     ts,
     battery: Number.isFinite(st.battery) ? st.battery : (prev ? prev.battery : null),
     rssi: Number.isFinite(st.rssi) ? st.rssi : null,
-    snr: Number.isFinite(st.snr) ? st.snr : null
+    snr: Number.isFinite(st.snr) ? st.snr : null,
+    gpsState: Number.isInteger(st.gpsState) && st.gpsState >= 0 && st.gpsState <= 2 ? st.gpsState : null,   // 0 stumm, 1 keine Satelliten, 2 Suche
+    sats: Number.isInteger(st.sats) && st.sats >= 0 && st.sats <= 255 ? st.sats : null
   };
   scheduleSave();
   return positions[id].status;
@@ -334,9 +336,9 @@ function getPublicTracker(id, { trail = true } = {}) {
     latest: pos.latest,
     stale: isStale(pos.latest)
   };
+  out.online = Date.now() - lastSeenTs(pos) <= STALE_AFTER_MS;   // irgendetwas gehoert (Position oder Lebenszeichen)
   if (pos.status) {
     out.status = pos.status;
-    out.online = Date.now() - lastSeenTs(pos) <= STALE_AFTER_MS;
     // Lebenszeichen kommen, aber die letzte Position ist veraltet (oder es gab noch nie eine): Tracker hat keinen GPS-Fix
     out.noFix = out.online && out.stale;
   }
@@ -348,6 +350,13 @@ function getPublicTracker(id, { trail = true } = {}) {
 function staleMap() {
   const out = {};
   for (const t of Object.values(trackers)) out[t.id] = isStale((positions[t.id] || {}).latest);
+  return out;
+}
+
+/** Online-Zustand aller Tracker (Position oder Lebenszeichen kuerzlich gehoert) - fuer die regelmaessige Statusmeldung. */
+function onlineMap() {
+  const out = {};
+  for (const t of Object.values(trackers)) out[t.id] = Date.now() - lastSeenTs(positions[t.id]) <= STALE_AFTER_MS;
   return out;
 }
 
@@ -369,6 +378,7 @@ module.exports = {
   findTrackerByToken,
   decimate,
   staleMap,
+  onlineMap,
   getTrackerByLoraId,
   setLoraId,
   readHistory,

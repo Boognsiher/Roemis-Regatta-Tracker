@@ -41,3 +41,13 @@ test('Lebenszeichen ohne GPS-Fix: Rundlauf, kein Fix, Akku gueltig', () => {
   const ok = P.decode(P.encode({ id: 4, ts: 1000, lat: 46.8, lon: 10.5 }));
   assert.strictEqual(ok.fix, true);
 });
+
+test('Lebenszeichen traegt GPS-Zustand und Satelliten', () => {
+  const d = P.decode(P.encode({ id: 5, fix: false, battery: 0.5, gpsState: 2, sats: 4 }));
+  assert.strictEqual(d.fix, false);
+  assert.strictEqual(d.gpsState, 2);
+  assert.strictEqual(d.sats, 4);
+  assert.strictEqual(d.speed, 0);
+  const silent = P.decode(P.encode({ id: 5, fix: false, gpsState: 0, sats: 0 }));
+  assert.strictEqual(silent.gpsState, 0);
+});

@@ -269,7 +269,7 @@ app.post('/api/gateway/positions', requireGateway, (req, res) => {
       const tr = p.trackerId ? store.getTracker(p.trackerId) : store.getTrackerByLoraId(p.id);
       if (!tr) { unknown.add(p.trackerId || p.id); continue; }
       const seen = isFiniteNumber(p.seenTs) && p.seenTs <= maxTs ? p.seenTs : Date.now();
-      store.recordStatus(tr.id, { ts: seen, battery: p.battery, rssi: p.rssi, snr: p.snr });
+      store.recordStatus(tr.id, { ts: seen, battery: p.battery, rssi: p.rssi, snr: p.snr, gpsState: p.gpsState, sats: p.sats });
       heartbeats.add(tr.id);
       continue;
     }
@@ -485,7 +485,7 @@ setInterval(() => {
 }, 5000);
 
 setInterval(() => {
-  broadcast({ type: 'status', stale: store.staleMap() }); // klein (nur Online/Offline) und haelt die Verbindung offen
+  broadcast({ type: 'status', stale: store.staleMap(), online: store.onlineMap() }); // klein (nur Online/Offline) und haelt die Verbindung offen
 }, 15000);
 
 server.listen(PORT, () => {
