@@ -7,6 +7,10 @@
 #define PKT_MAGIC 0xA7
 // Lebenszeichen ohne GPS-Fix: lat und lon = PKT_NOFIX_COORD, epochSec/centisec = 0. Akku (battPct) ist trotzdem gueltig.
 #define PKT_NOFIX_COORD INT32_MIN
+// Im Lebenszeichen steht in speedCms der GPS-Zustand: Hochbyte = Zustand, Tiefbyte = sichtbare Satelliten (0..255).
+#define GPS_STATE_SILENT  0   // GPS-Modul liefert keine Daten (Verdrahtung/Strom/Modul defekt)
+#define GPS_STATE_NOSATS  1   // Daten kommen, aber keine Satelliten gesehen
+#define GPS_STATE_SEARCH  2   // Satelliten sichtbar, noch kein Fix
 
 struct __attribute__((packed)) TrackerPacket {
   uint8_t  magic;       // PKT_MAGIC

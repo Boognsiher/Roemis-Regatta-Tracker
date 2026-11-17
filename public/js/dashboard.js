@@ -101,20 +101,30 @@
     renderList();
   }
 
+  function gpsStateText(st) {
+    if (!st || st.gpsState == null) return '';
+    const names = ['GPS-Modul stumm', 'keine Satelliten', 'Suche'];
+    return ` (${names[st.gpsState] || '?'}${st.sats ? `, ${st.sats} Sat.` : ''})`;
+  }
+
   function renderList() {
     const items = [...boats.values()].sort((a, b) => a.data.name.localeCompare(b.data.name));
     if (items.length === 0) {
       boatListEl.innerHTML = '<p class="empty-state">Noch keine Tracker aktiv.</p>';
       return;
     }
-    boatListEl.innerHTML = items.map(({ data: t }) => `
+    const total = items.length;
+    const onlineCount = items.filter(({ data: t }) => t.online).length;
+    const withFix = items.filter(({ data: t }) => t.online && !t.noFix && !t.stale).length;
+    const summary = `<div class="hint" style="margin-bottom:0.5rem"><b>${onlineCount} von ${total}</b> Trackern online · ${withFix} mit GPS-Fix</div>`;
+    boatListEl.innerHTML = summary + items.map(({ data: t }) => `
       <div class="boat-card ${t.stale ? 'stale' : ''}" data-id="${t.id}">
         <div class="boat-dot" style="background:${t.color}"></div>
         <div class="boat-info">
           <div class="boat-name">${escapeHtml(t.name)}</div>
           <div class="boat-meta">
-            ${t.noFix ? `online, kein GPS-Fix${t.status && t.status.battery != null ? ` · Akku ${Math.round(t.status.battery * 100)}%` : ''}${t.latest ? ` · letzte Position ${fmtAge(t.latest.ts)}` : ''}`
-              : t.latest ? `${fmtAge(t.latest.ts)} · ${fmtSpeed(t.latest.speed)}` : 'noch keine Position'}
+            ${t.noFix ? `online, kein GPS-Fix${gpsStateText(t.status)}${t.status && t.status.battery != null ? ` · Akku ${Math.round(t.status.battery * 100)}%` : ''}${t.latest ? ` · letzte Position ${fmtAge(t.latest.ts)}` : ''}`
+              : t.latest ? `${fmtAge(t.latest.ts)} · ${fmtSpeed(t.latest.speed)}${t.online ? '' : ' · offline'}` : (t.online ? 'online, noch keine Position' : 'offline')}
           </div>
         </div>
       </div>
@@ -135,7 +145,11 @@
   }
 
   // Kleine Statusmeldung des Servers: nur Online/Offline je Boot
-  function applyStatus(staleMap) {
+  function applyStatus(staleMap, onlineMap) {
+    for (const [id, online] of Object.entries(onlineMap || {})) {
+      const e = boats.get(id);
+      if (e) e.data.online = online;
+    }
     for (const [id, stale] of Object.entries(staleMap || {})) {
       const entry = boats.get(id);
       if (!entry || entry.data.stale === stale) continue;
@@ -171,7 +185,7 @@
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'snapshot') applySnapshot(msg.trackers);
-      else if (msg.type === 'status') applyStatus(msg.stale);
+      else if (msg.type === 'status') applyStatus(msg.stale, msg.online);
       else if (msg.type === 'position' || msg.type === 'tracker-created' || msg.type === 'tracker-updated') {
         upsertBoat(msg.tracker);
       } else if (msg.type === 'tracker-deleted') {

@@ -29,6 +29,12 @@
     $('c-rx').textContent = rx; $('c-tx').textContent = tx; $('c-queue').textContent = queue.length; $('c-bad').textContent = bad;
   }
 
+  const GPS_STATES = ['GPS stumm (keine Daten vom Modul)', 'GPS ohne Satelliten', 'Suche, Satelliten sichtbar'];
+  function gpsText(h) {
+    if (h.fix !== false) return 'Fix';
+    return `kein Fix: ${GPS_STATES[h.gpsState] || 'unbekannt'}${h.sats ? ` · ${h.sats} Sat.` : ''}`;
+  }
+
   function renderHeard() {
     const rows = [...heard.entries()].sort((a, b) => a[0] - b[0]).map(([id, h]) => {
       const t = trackers.find((x) => x.loraId === id);
@@ -36,9 +42,9 @@
       return `<tr><td>${id}</td><td>${t ? esc(t.name) : '<span class="warn-text">unbekannt</span>'}</td>
         <td class="num">${age < 60 ? `${age}s` : `${Math.round(age / 60)}min`}</td><td class="num">${h.count}</td>
         <td class="num">${h.rssi ?? '–'}</td><td class="num">${h.snr ?? '–'}</td>
-        <td class="num">${h.battery != null ? Math.round(h.battery * 100) + '%' : '–'}${h.fix === false ? ' · kein GPS' : ''}</td></tr>`;
+        <td class="num">${h.battery != null ? Math.round(h.battery * 100) + '%' : '–'}</td><td>${gpsText(h)}</td></tr>`;
     });
-    $('heard').innerHTML = rows.join('') || '<tr><td colspan="7" class="hint">Noch nichts empfangen.</td></tr>';
+    $('heard').innerHTML = rows.join('') || '<tr><td colspan="8" class="hint">Noch nichts empfangen.</td></tr>';
   }
 
   function enqueue(p) {
@@ -51,10 +57,10 @@
     if (!p) { bad += 1; counters(); return; }
     rx += 1;
     const h = heard.get(p.id) || { count: 0 };
-    Object.assign(h, { seen: Date.now(), count: h.count + 1, rssi: p.rssi, snr: p.snr, battery: p.battery, fix: p.fix });
+    Object.assign(h, { seen: Date.now(), count: h.count + 1, rssi: p.rssi, snr: p.snr, battery: p.battery, fix: p.fix, gpsState: p.gpsState, sats: p.sats });
     heard.set(p.id, h);
     if (!p.fix) {   // Lebenszeichen ohne GPS-Fix: nur Status (Akku, Empfang), keine Position
-      enqueue({ id: p.id, fix: false, seenTs: Date.now(), battery: p.battery, rssi: p.rssi, snr: p.snr });
+      enqueue({ id: p.id, fix: false, seenTs: Date.now(), battery: p.battery, rssi: p.rssi, snr: p.snr, gpsState: p.gpsState, sats: p.sats });
       persist(); counters();
       return;
     }
