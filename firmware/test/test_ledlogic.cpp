@@ -18,6 +18,18 @@ int main() {
   nofix.noFixMs = LED_NOFIX_FAULT_MS + 1;
   CHECK(decidePattern(nofix) == PAT_FAULT_BLINK);
 
+  // GPS-Zustand bekannt (Tracker, 17.11.2026): 5 min ohne Fix sind kein Fehler mehr, die GPS-Muster zeigen die Ursache
+  LedInputs gs = nofix; gs.noFixMs = LED_NOFIX_FAULT_MS + 1;
+  gs.gpsInfo = GPS_INFO_SEARCH;  CHECK(decidePattern(gs) == PAT_BUSY_BLINK);
+  gs.gpsInfo = GPS_INFO_NOSATS;  CHECK(decidePattern(gs) == PAT_GPS_NOSATS);
+  gs.gpsInfo = GPS_INFO_SILENT;  CHECK(decidePattern(gs) == PAT_GPS_SILENT);
+  gs.fsOk = false;               CHECK(decidePattern(gs) == PAT_FAULT_BLINK);       // Geraetefehler hat Vorrang
+  gs.fsOk = true; gs.battery = 0.1f; CHECK(decidePattern(gs) == PAT_BATT_LOW);      // Akku niedrig vor GPS-Muster
+  LedInputs fixOk = ok(); fixOk.gpsInfo = GPS_INFO_SILENT;                           // mit Fix zaehlt der Zustand nicht
+  CHECK(decidePattern(fixOk) == PAT_OK_HEARTBEAT);
+  LedInputs unknown = nofix; unknown.noFixMs = LED_NOFIX_FAULT_MS + 1; unknown.gpsInfo = GPS_INFO_UNKNOWN;
+  CHECK(decidePattern(unknown) == PAT_FAULT_BLINK);                                  // Logger/Master: altes Verhalten
+
   // Upload laeuft: gelb blinkt
   LedInputs up = ok(); up.uploading = true;
   CHECK(decidePattern(up) == PAT_BUSY_BLINK);
@@ -53,6 +65,11 @@ int main() {
   CHECK(patternAt(PAT_BUSY_BLINK, 100).y && !patternAt(PAT_BUSY_BLINK, 600).y);
   CHECK(patternAt(PAT_FAULT_BLINK, 100).r && !patternAt(PAT_FAULT_BLINK, 600).r);
   CHECK(patternAt(PAT_BATT_LOW, 50).r && !patternAt(PAT_BATT_LOW, 150).r);
+  CHECK(patternAt(PAT_GPS_SILENT, 100).r && !patternAt(PAT_GPS_SILENT, 100).y);
+  CHECK(patternAt(PAT_GPS_SILENT, 600).y && !patternAt(PAT_GPS_SILENT, 600).r);
+  CHECK(patternAt(PAT_GPS_NOSATS, 50).y && !patternAt(PAT_GPS_NOSATS, 200).y);
+  CHECK(patternAt(PAT_GPS_NOSATS, 350).y && !patternAt(PAT_GPS_NOSATS, 600).y && !patternAt(PAT_GPS_NOSATS, 1200).y);
+  CHECK(patternAt(PAT_GPS_NOSATS, 1550).y);                                          // naechster Zyklus (1500 ms)
   CHECK(!patternAt(PAT_OK_HEARTBEAT, 50).r && !patternAt(PAT_OK_HEARTBEAT, 50).y);
 
   if (failures == 0) std::printf("alle Tests ok\n");
