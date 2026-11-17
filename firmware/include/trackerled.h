@@ -2,6 +2,7 @@
 /*
  * Ampel + Taste fuer Logger und LoRa-Tracker (braucht logupload.h und board.h).
  *  Normal: kurzes Blinken: gruen = alles gut, gelb = GPS-Suche/Upload, rot = Fehler / Akku niedrig.
+ *  Tracker ohne Fix zusaetzlich: rot/gelb abwechselnd = GPS-Modul stumm, gelb doppelt = GPS ohne Satelliten (siehe ledlogic.h).
  *  Kurzer Tastendruck: 10 s Dauer-Anzeige (gruen = alles hochgeladen, gelb = Daten warten, rot = Fehler)
  *                      und Upload sofort versuchen.
  *  Taste 5 s halten:   Log loeschen - nur wenn alles hochgeladen ist (sonst rot).
@@ -20,7 +21,7 @@ static float tlBatt = -1;
 static bool tlPressed = false, tlLongDone = false;
 static uint32_t tlPressStart = 0;
 
-static LedInputs tlInputs(bool hasFix, bool radioFailed) {
+static LedInputs tlInputs(bool hasFix, bool radioFailed, uint8_t gpsInfo) {
   uint32_t now = millis();
   if (hasFix) tlLastFixMs = now;
   if (now - tlBattCheckMs > 2000) { tlBattCheckMs = now; tlBatt = boardBattery(); }
@@ -31,6 +32,7 @@ static LedInputs tlInputs(bool hasFix, bool radioFailed) {
   in.noFixMs = now - tlLastFixMs;
   in.battery = tlBatt;
   in.uploading = upState == UP_SCAN || upState == UP_CONNECT || upState == UP_UPLOAD;
+  in.gpsInfo = gpsInfo;
   return in;
 }
 
@@ -63,9 +65,10 @@ static void tlButton(const LedInputs &in) {
 #endif
 }
 
-/** Aus loop() bei jedem Durchlauf aufrufen. hasFix = gueltiger GPS-Fix, radioFailed = LoRa-Init fehlgeschlagen. */
-static void trackerLedLoop(bool hasFix, bool radioFailed) {
-  LedInputs in = tlInputs(hasFix, radioFailed);
+/** Aus loop() bei jedem Durchlauf aufrufen. hasFix = gueltiger GPS-Fix, radioFailed = LoRa-Init fehlgeschlagen,
+ *  gpsInfo = GpsInfo (ledlogic.h) oder 0 = unbekannt (Logger: altes Verhalten inkl. Rot nach 5 min ohne Fix). */
+static void trackerLedLoop(bool hasFix, bool radioFailed, uint8_t gpsInfo = 0) {
+  LedInputs in = tlInputs(hasFix, radioFailed, gpsInfo);
   tlButton(in);
   ledRender(decidePattern(in));
 }

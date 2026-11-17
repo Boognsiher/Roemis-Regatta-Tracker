@@ -130,8 +130,10 @@ Beim Einschalten kommt eine **Lampenprobe** (Rot, Gelb, Gruen nacheinander): so 
 |---|---|
 | Gruen: kurzes Blinken alle 2 s | GPS-Fix da, Aufzeichnung laeuft - alles in Ordnung |
 | Gelb: blinkt 1x pro Sekunde | Suche GPS **oder** Upload laeuft |
-| Rot: blinkt 1x pro Sekunde | Fehler: Flash/LoRa-Init fehlgeschlagen oder mehr als 5 min kein GPS |
+| Rot: blinkt 1x pro Sekunde | Fehler: Flash/LoRa-Init fehlgeschlagen (beim Logger und Master zusaetzlich: mehr als 5 min kein GPS; beim Tracker nicht mehr, dort zeigen die zwei GPS-Muster unten die Ursache) |
 | Rot: sehr kurzes Blitzen jede Sekunde | Akku unter 15 % |
+| Rot und Gelb abwechselnd (1x pro Sekunde) | **Tracker ohne Fix:** GPS-Modul liefert gar keine Daten (Verdrahtung, Strom oder Modul) |
+| Gelb: zwei kurze Blinks, dann Pause | **Tracker ohne Fix:** GPS-Daten kommen, aber 0 Satelliten (Himmelssicht/Antenne) |
 
 **Master:** Gruen = Handy per Bluetooth verbunden, Gelb blinkt = wartet auf Handy, Rot = LoRa-Init fehlgeschlagen.
 

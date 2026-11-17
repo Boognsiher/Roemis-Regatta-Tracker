@@ -97,6 +97,22 @@ uint16_t gpsStatusWord() {
   return (uint16_t)((state << 8) | (sats > 255 ? 255 : sats));
 }
 
+/** GPS-Zustand fuer die Ampel (GpsInfo, ledlogic.h). Alle 3 s neu: "stumm" = in dieser Zeit kam kein einziges Zeichen vom GPS-Modul. */
+uint8_t gpsLedInfo() {
+  static uint32_t lastCheck = 0, lastChars = 0;
+  static uint8_t info = GPS_INFO_UNKNOWN;
+  uint32_t now = millis();
+  if (now - lastCheck >= 3000) {
+    lastCheck = now;
+    uint32_t chars = gps.charsProcessed();
+    bool silent = (chars == lastChars);
+    lastChars = chars;
+    int sats = gps.satellites.isValid() ? (int)gps.satellites.value() : 0;
+    info = silent ? GPS_INFO_SILENT : (sats > 0 ? GPS_INFO_SEARCH : GPS_INFO_NOSATS);
+  }
+  return info;
+}
+
 /** Lebenszeichen ohne GPS-Fix: Position = Platzhalter, Akku gueltig. Der Server behaelt dann die alte Position. */
 void fillNoFixPacket(TrackerPacket &p) {
   p.magic = PKT_MAGIC;
@@ -281,7 +297,7 @@ void loop() {
     }
   }
 
-  trackerLedLoop(lastFix.valid && gps.location.isValid() && gps.location.age() < 3000, !loraOk);
+  trackerLedLoop(lastFix.valid && gps.location.isValid() && gps.location.age() < 3000, !loraOk, gpsLedInfo());
   if (millis() - lastDisplay > 1000) { lastDisplay = millis(); updateDisplay(); }
   handleSerial();
 }
