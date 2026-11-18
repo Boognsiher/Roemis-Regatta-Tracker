@@ -42,6 +42,8 @@ static void handleSerial() {
       Serial.printf("ID %d | Sat %d | Eintraege im Log %u | hochgeladen %u | Fix %s | %s\n", TRACKER_ID,
                     gps.satellites.isValid() ? (int)gps.satellites.value() : -1, (unsigned)logupEntries(),
                     (unsigned)logupUploaded(), gps.location.isValid() ? "ja" : "nein", upStateText());
+      float chipT = boardChipTempC();
+      Serial.printf("Chip %.0f Grad C%s (ESP32-Fuehler, nicht der Akku)\n", chipT, chipTempWarn(chipT));
     }
   }
 }

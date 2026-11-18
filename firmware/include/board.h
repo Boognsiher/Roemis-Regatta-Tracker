@@ -85,3 +85,12 @@ inline float boardBattery() {
 }
 
 #endif
+
+// Chiptemperatur des ESP32 (17.11.2026): interner Fuehler, ungenau (einige Kelvin Abweichung moeglich) und er misst den CHIP,
+// NICHT den Akku. Der T-Beam hat keinen Akku-Temperaturfuehler (TS-Pin unbestueckt, siehe boardInit). Zweck: im geschlossenen Gehaeuse in der
+// Sonne merken, dass es heiss wird. Der Akku vertraegt Laden nur bis ca. 45 Grad und Entladen bis ca. 60 Grad - er wird meist ZUERST zu heiss.
+#ifndef CHIP_TEMP_WARN_C
+#define CHIP_TEMP_WARN_C 75.0f
+#endif
+inline float boardChipTempC() { return temperatureRead(); }
+inline const char *chipTempWarn(float t) { return t >= CHIP_TEMP_WARN_C ? " HEISS!" : ""; }
