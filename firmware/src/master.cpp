@@ -235,6 +235,10 @@ void loop() {
     Serial.printf("RX ok %u, defekt %u, BLE %s, Puffer %u, Akku %s%d%%\n", rxOk, rxBad,
                   bleConnected ? "verbunden" : "getrennt", (unsigned)((ringHead + RING_SIZE - ringTail) % RING_SIZE),
                   b < 0 ? "?" : "", b < 0 ? 0 : (int)lround(b * 100));
+    {
+      float chipT = boardChipTempC();
+      Serial.printf("Chip %.0f Grad C%s (ESP32-Fuehler, nicht der Akku)\n", chipT, chipTempWarn(chipT));
+    }
 #ifdef OWN_TRACKER_ID
     Serial.printf("Eigenes GPS: Fix %s, Sat %d, HDOP %.1f\n", ownFix ? "ja" : "nein",
                   gps.satellites.isValid() ? (int)gps.satellites.value() : -1,

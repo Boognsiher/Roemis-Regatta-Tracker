@@ -149,6 +149,8 @@ void handleSerial() {
                     HOTSPOT_UPLOAD ? upStateText() : "Upload aus");
       Serial.printf("LoRa %s | Lebenszeichen gesendet %u, Band belegt %u | GPS-Zeichen %u, Pruefsummenfehler %u\n", loraOk ? "ok" : "AUS",
                     hbSent, hbBusy, (unsigned)gps.charsProcessed(), (unsigned)gps.failedChecksum());
+      float chipT = boardChipTempC();
+      Serial.printf("Chip %.0f Grad C%s (ESP32-Fuehler, nicht der Akku; Akku Laden max. ca. 45 Grad)\n", chipT, chipTempWarn(chipT));
     }
   }
 }

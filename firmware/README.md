@@ -141,6 +141,10 @@ Beim Einschalten kommt eine **Lampenprobe** (Rot, Gelb, Gruen nacheinander): so 
 Der Master zeigt dann `RX #n kein GPS-Fix, Akku xx%`, der Server behaelt die alte Position (ohne fruehere Position wird nichts angezeigt) und
 zeigt im Dashboard "online, kein GPS-Fix" mit Akkustand und GPS-Zustand (GPS-Modul stumm / keine Satelliten / Suche mit Satellitenzahl) sowie "n von N Trackern online". Auch der Master mit eigenem Boot (`boatmaster_tbeam`) sendet ohne Fix ein solches Lebenszeichen ans Handy. Beim Start zeigt der Monitor das Build-Datum der Firmware; `s` am Tracker zeigt LoRa-Status, gesendete/verschobene Lebenszeichen und GPS-Zeichen. So siehst du, dass ein Tracker laeuft, bevor er einen Fix hat.
 
+**Chiptemperatur:** Der Monitor zeigt beim Befehl `s` (Logger, Tracker) bzw. alle 10 s (Master) die Temperatur des ESP32-Chips, ab 75 Grad mit dem
+Zusatz "HEISS!" (`CHIP_TEMP_WARN_C`). Der Fuehler ist ungenau und misst den **Chip, nicht den Akku**; der T-Beam hat keinen Akku-Temperaturfuehler.
+Die Akkuzelle wird im geschlossenen Gehaeuse in der Sonne meist zuerst zu heiss (Laden nur bis ca. 45 Grad, Entladen bis ca. 60 Grad).
+
 **Taste** (am T-Beam: User-Taste GPIO38; am Heltec: PRG), nur Logger/Tracker:
 - **Kurz druecken:** 10 s Dauer-Anzeige (Gruen = alles hochgeladen, Gelb = Daten warten noch, Rot = Fehler/Akku) und
   Upload sofort versuchen.
