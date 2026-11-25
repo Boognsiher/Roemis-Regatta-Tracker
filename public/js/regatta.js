@@ -579,7 +579,7 @@
     await Promise.all(regatta.races.filter((r) => r.startTs != null || r.auto).map(async (r) => {
       results[r.id] = await api(`/api/races/${r.id}/results`);
     }));
-    renderClasses(); renderBoats(); renderRaces(); renderCourseSelect(); renderFinishPanel();
+    renderClasses(); renderBoats(); renderRaces(); renderCourseSelect(); renderFinishPanel(); renderLiveButton();
     await loadHistory();
     await loadDetectedMarks();
   }
@@ -664,6 +664,20 @@
     loadDrafts();
     $('cs-msg').textContent = msg || '';
   }
+  // Aufschalten: Nur der hier aufgeschaltete Kurs erscheint fuer alle auf der Live-Karte (unabhaengig davon, welchen Kurs du gerade bearbeitest)
+  function renderLiveButton() {
+    const c = activeCourse();
+    const live = regatta.courses.find((x) => x.id === regatta.liveCourseId);
+    const isLive = !!c && regatta.liveCourseId === c.id;
+    $('cs-live').textContent = isLive ? 'Kurs von der Live-Karte nehmen' : 'Kurs auf Live-Karte aufschalten';
+    $('cs-live-msg').textContent = live ? `Auf der Live-Karte aufgeschaltet: ${live.name}` : 'Auf der Live-Karte ist kein Kurs aufgeschaltet.';
+  }
+  $('cs-live').addEventListener('click', guard(async () => {
+    const c = activeCourse();
+    if (!c) return;
+    await api('/api/admin/live-course', 'PUT', { courseId: regatta.liveCourseId === c.id ? null : c.id });
+    await load();
+  }));
   $('cs-select').addEventListener('change', guard(() => courseAction(`/api/admin/courses/${$('cs-select').value}/activate`, 'POST', {}, 'Kurs gewechselt.')));
   $('cs-copy').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { copyFrom: regatta.activeCourseId }, 'Kopie angelegt.')));
   $('cs-new-loop').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'loop' }, 'Neuer Rundkurs angelegt - Linie und Bojen eintragen.')));
