@@ -149,3 +149,48 @@ test('Langstrecke komplett: Kurs/Rennen anlegen, Ziellinie, Ergebnis mit Bojen, 
   assert.strictEqual(r2.laps, 3);
   assert.strictEqual(regatta.updateRace(r2.id, { lapMode: 'distance' }).laps, 1);
 });
+
+test('Umrundungsrichtung: Backbord/Steuerbord aus der Drehrichtung bzw. der Seite bei der Vorbeifahrt', () => {
+  const pl = timing.prepareLine(START);
+  const M1 = pt(0, 3000);
+  const run = (path, rounding) => course.checkMarks({ pl, fixes: drive(path, GUN + 60000), approxMarks: [rounding ? { ...M1, rounding } : M1], startPassTs: GUN + 100000, options: { radiusM: 250 } })[0];
+  // Nach Norden, Boje links liegen lassen? Pfad A: noerdlich um die Boje herum nach Osten abbiegen, Boje liegt danach rechts (Steuerbord, im Uhrzeigersinn)
+  const a = run([[0, -200], [-30, 3030], [3000, 3030]], 'starboard');
+  assert.strictEqual(a.side, 'starboard');
+  assert.strictEqual(a.wrongSide, false);
+  assert.strictEqual(run([[0, -200], [-30, 3030], [3000, 3030]], 'port').wrongSide, true);   // verlangt Backbord -> falsche Seite
+  // Pfad B: oestlich vorbei, nach Westen abbiegen, Boje liegt links (Backbord, gegen den Uhrzeigersinn)
+  const b = run([[0, -200], [30, 3030], [-3000, 3030]], 'port');
+  assert.strictEqual(b.side, 'port');
+  assert.strictEqual(b.wrongSide, false);
+  assert.strictEqual(run([[0, -200], [30, 3030], [-3000, 3030]], 'starboard').wrongSide, true);
+  // Blosse Vorbeifahrt (gerade, 24 m oestlich): Boje liegt links = Backbord
+  const c = run([[0, -200], [48, 6000]], 'port');
+  assert.strictEqual(c.passOnly, true);
+  assert.strictEqual(c.side, 'port');
+  // ohne Vorgabe: keine Beanstandung; durch die Boje selbst (Seite nicht bestimmbar): nie "falsche Seite"
+  const d = run([[0, -200], [0, 3000], [3000, 3000]], undefined);
+  assert.strictEqual(d.wrongSide, false);
+  assert.strictEqual(d.rounding, null);
+  assert.strictEqual(run([[0, -200], [0, 3000], [3000, 3000]], 'port').wrongSide, false);
+});
+
+test('Umrundungsrichtung im Kurs speichern und in der Wertung melden', () => {
+  const cls = regatta.addClass('YS110', 110);
+  const tr = store.createTracker('Richtung');
+  regatta.registerBoat(tr.id, { sailNo: 'R 1', helm: 'C', classId: cls.id });
+  regatta.createCourse({ kind: 'distance' });
+  regatta.setLine(START);
+  const stored = regatta.setCourse([{ ...MARKS[0], rounding: 'port' }, { ...MARKS[1], rounding: 'quatsch' }], 250, true);
+  assert.strictEqual(stored.marks[0].rounding, 'port');
+  assert.strictEqual(stored.marks[1].rounding, undefined);                                   // ungueltige Werte werden verworfen
+  regatta.setFinishLine({ a: pt(2950, 500), b: pt(3050, 500) });
+  // Boot laesst Boje 1 an Steuerbord (Pfad ueber (-30, 3030)), verlangt ist Backbord
+  for (const f of drive([[0, -200], [-30, 3030], [3000, 3030], [3000, 300]], GUN + 60000)) store.recordPosition(tr.id, f);
+  const race = regatta.createRace({ name: 'Richtung', startTs: GUN, cutoffMinutes: 240 });
+  assert.strictEqual(race.course.marks[0].rounding, 'port');
+  const e = regatta.computeResults(race).entries.find((x) => x.trackerId === tr.id);
+  assert.ok(e.warnings.some((w) => /Boje 1 an Steuerbord gelassen, verlangt ist an Backbord/.test(w)), e.warnings.join(' | '));
+  assert.strictEqual(e.marks[0].wrongSide, true);
+  assert.strictEqual(e.status, 'FIN');                                                        // nur Warnung, Wertung bleibt
+});

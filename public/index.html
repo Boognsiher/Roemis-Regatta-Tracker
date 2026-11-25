@@ -14,7 +14,8 @@
       <span><a class="admin-link" href="live.html">Live-Rangliste</a> <a class="admin-link" href="results.html">Ergebnisse</a> <a class="admin-link" href="regatta.html">Wettfahrtleitung</a> <a class="admin-link" href="admin.html">Admin</a> <button id="logout-btn" class="admin-link" style="display:none;background:none;cursor:pointer">Abmelden</button></span>
     </header>
     <div class="layout">
-      <aside id="sidebar">
+      <aside id="sidebar" class="collapsed">
+        <button id="sidebar-toggle" type="button" aria-expanded="false"><span id="sidebar-summary">Boote</span><span id="sidebar-arrow">&#9650;</span></button>
         <div id="track-controls" class="hint" style="margin-bottom:0.6rem">
           <label style="display:block;margin-bottom:0.3rem"><input type="checkbox" id="full-track" /> Ganze Spur anzeigen</label>
           <select id="track-range" style="width:100%">

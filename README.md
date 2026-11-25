@@ -70,6 +70,11 @@ In `/regatta.html`, Bereich 3: "Neu: Langstrecke". Es zaehlt EINE Zeit vom Start
 - **Bojen** (1 bis 20, auch Tore) werden jede einzeln geprueft: gerundet (Kursaenderung ab 25 Grad innerhalb des Suchradius) oder knapp passiert (bis 0,6 x Radius).
   Eine fehlende Boje oder eine falsche Reihenfolge erscheint als Warnung bei der Wertung, ohne diese zu aendern: die Wettfahrtleitung entscheidet (Strafe/DSQ per Korrektur).
   In den Ergebnissen steht je Boot "Bojen: 1 ✓ 2 ✗". Die Bojen sind exakt einzugeben (Haken "Positionen sind exakt"), der Suchradius gilt fuer jede Boje.
+- **Umrundungsrichtung pro Boje** (in der Bojenliste neben jeder Boje): *beliebig* (Standard), *an Backbord lassen* (gegen den Uhrzeigersinn) oder *an Steuerbord lassen*
+  (im Uhrzeigersinn); in der Sammel-Eingabe mit `@P` bzw. `@S` am Zeilenende. Bei einer Rundung entscheidet die Drehrichtung des Boots (Rechtskurve = Steuerbord), bei einer
+  blossen Vorbeifahrt die Seite, auf der die Boje liegt. Weicht sie ab, steht in der Wertung die Warnung "Boje 2 an Steuerbord gelassen, verlangt ist an Backbord", die Wertung
+  bleibt unveraendert (Ergebnisse: "Bojen: 1 ✓ 2 ⚠"). Liegt die Boje auf weniger als 5 m an der Fahrlinie, ist die Seite nicht sicher bestimmbar und es gibt keine Warnung.
+  Tore brauchen keine Richtung (die Durchfahrt zaehlt). Die Pruefung gilt bisher nur fuer die Langstrecke, nicht fuer Rundkurse.
 - Die Live-Rangliste rechnet die Strecke von der Mitte der Start-Linie ueber die Bojen bis zur Mitte der Ziellinie.
 - Nicht geprueft auf echten Daten; getestet mit simulierten Fahrten (`test/distance.test.js`). Der Zeitverlauf (GPS-Zeit) und die Linienlogik sind wie bei den anderen Modi.
 

@@ -40,6 +40,21 @@ function toXY(pl, fixes) {
  * Nur Punkte innerhalb von maxDistM kommen als Rundung in Frage. Ohne deutliche Kursaenderung (Vorbeifahrt) zaehlt der
  * naechste Punkt, aber nur, wenn er nah genug an der Boje liegt (passMaxM).
  */
+/**
+ * Auf welcher Seite des Boots liegt die Boje m, wenn das Boot von p nach q faehrt? 'port' = Backbord (links, Boje an Backbord gelassen = gegen den
+ * Uhrzeigersinn gerundet), 'starboard' = Steuerbord (rechts, im Uhrzeigersinn). null, wenn die Boje fast auf der Fahrtlinie liegt (unter 3 m, nicht unterscheidbar).
+ * Koordinaten: x Ost, y Nord.
+ */
+function markSide(p, q, m) {
+  const dx = q.x - p.x;
+  const dy = q.y - p.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 8) return null;
+  const c = (dx * (m.y - p.y) - dy * (m.x - p.x)) / len;      // seitlicher Abstand der Boje, positiv = links der Fahrtrichtung
+  if (Math.abs(c) < 3) return null;
+  return c > 0 ? 'port' : 'starboard';
+}
+
 function findApex(pts, i0, i1, m, o, maxDistM = Infinity, passMaxM = Infinity) {
   const W = o.turnWindowS * 1000;
   let best = null;
@@ -53,18 +68,22 @@ function findApex(pts, i0, i1, m, o, maxDistM = Infinity, passMaxM = Infinity) {
     let b = j;
     while (b < pts.length - 1 && pts[b].t - pts[j].t < W) b += 1;
     if (pts[b].t - pts[j].t < W) continue;                  // noch zu wenig Nachlauf (Boot gerade erst an der Boje)
-    const turn = dist(pts[a], pts[j]) < 8 || dist(pts[j], pts[b]) < 8 ? 0 : angDiff(bearing(pts[a], pts[j]), bearing(pts[j], pts[b]));
-    if (!best || turn > best.turn) best = { j, turn, dm };
-    if (!closest || dm < closest.dm) closest = { j, turn, dm };
+    const still = dist(pts[a], pts[j]) < 8 || dist(pts[j], pts[b]) < 8;
+    const turn = still ? 0 : angDiff(bearing(pts[a], pts[j]), bearing(pts[j], pts[b]));
+    // mit Vorzeichen: positiv = Rechtsdrehung (im Uhrzeigersinn), negativ = Linksdrehung
+    const signed = still ? 0 : ((bearing(pts[j], pts[b]) - bearing(pts[a], pts[j]) + 540) % 360) - 180;
+    if (!best || turn > best.turn) best = { j, turn, signed, dm, a, b };
+    if (!closest || dm < closest.dm) closest = { j, turn, signed, dm, a, b };
   }
   if (!best) return null;
   if (best.turn >= o.minTurnDeg) {
     const p = pts[best.j];
-    return { t: p.t, x: p.x, y: p.y, turn: best.turn, passOnly: false };
+    // Rundung: die Boje liegt auf der Innenseite der Kurve (Rechtsdrehung = Steuerbord, Linksdrehung = Backbord). Die Sehne a-b schneidet die Ecke ab und taugt hier nicht.
+    return { t: p.t, x: p.x, y: p.y, turn: best.turn, passOnly: false, side: best.dm < 5 ? null : best.signed > 0 ? 'starboard' : 'port' };   // wer die Boje fast beruehrt, laesst sich nicht sicher einer Seite zuordnen
   }
   if (closest.dm > passMaxM) return null;                   // zu weit weg fuer eine blosse Vorbeifahrt
   const p = pts[closest.j];
-  return { t: p.t, x: p.x, y: p.y, turn: closest.turn, passOnly: true };
+  return { t: p.t, x: p.x, y: p.y, turn: closest.turn, passOnly: true, side: markSide(pts[closest.a], pts[closest.b], m) };
 }
 
 /**
@@ -365,7 +384,10 @@ function checkMarks({ pl, fixes, approxMarks, startPassTs, endTs = null, options
   const out = marksXY.map((m, k) => {
     const prev = k === 0 ? mid : marksXY[k - 1];
     const ev = detectRoundings(pts, [m], startPassTs, tTo, o.radiusM, o, prev)[0];
-    return { k, t: ev ? ev.t : null, passOnly: ev ? !!ev.passOnly : null };
+    // Umrundungsrichtung: gewuenscht (approxMarks[k].rounding 'port'/'starboard', sonst beliebig) gegen die beobachtete Seite; Tore haben keine Seite
+    const want = approxMarks[k].rounding === 'port' || approxMarks[k].rounding === 'starboard' ? approxMarks[k].rounding : null;
+    const side = ev && !m.gate ? ev.side || null : null;
+    return { k, t: ev ? ev.t : null, passOnly: ev ? !!ev.passOnly : null, rounding: want, side, wrongSide: !!(want && side && side !== want) };
   });
   let last = -Infinity;
   out.forEach((r) => {

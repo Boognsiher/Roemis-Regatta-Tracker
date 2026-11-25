@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regatta-Tracker App</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:16px;line-height:1.5;color:#1b2733}
+  h1{font-size:1.4rem} .btn{display:block;text-align:center;background:#0b6fb8;color:#fff;padding:14px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0}
+  .off{background:#999;pointer-events:none} li{margin-bottom:8px} .note{font-size:.9rem;color:#556}
+</style>
+</head>
+<body>
+<h1>Regatta-Tracker für Android</h1>
+<p>Sendet die Position deines Handys im Hintergrund an die Regatta-Seite. Kein Bildschirm, keine Karte – die Karte öffnest du im Browser.</p>
+<a id="dl" class="btn" href="/tracker.apk">App herunterladen (APK)</a>
+<p id="na" class="note" hidden>Die App ist auf diesem Server noch nicht hinterlegt.</p>
+<h2>Einrichten</h2>
+<ol>
+  <li>APK herunterladen und öffnen. Android fragt einmalig, ob dieser Quelle die Installation erlaubt ist – erlauben.</li>
+  <li>App starten. Den persönlichen Tracker-Link der Wettfahrtleitung einfügen oder den QR-Code scannen.</li>
+  <li>„START“ drücken, Standort erlauben und die Akku-Optimierung für die App ausschalten.</li>
+  <li>Handy einstecken – die App sendet auch bei ausgeschaltetem Bildschirm weiter. Ohne Netz werden die Positionen gespeichert und später nachgesendet.</li>
+</ol>
+<p class="note">Handy-Tracker erscheinen auf der Live-Karte. In die Wertung kommen sie nur, wenn die Wettfahrtleitung sie als Boot erfasst hat.</p>
+<script>
+fetch('/api/app').then(r=>r.json()).then(j=>{ if(!j.available){ document.getElementById('dl').classList.add('off'); document.getElementById('na').hidden=false; } }).catch(()=>{});
+</script>
+</body>
+</html>

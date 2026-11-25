@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const express = require('express');
@@ -468,6 +469,15 @@ app.post('/api/admin/races/:id/official', requireAdmin, (req, res) => {
 app.get('/t/:id', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'tracker.html'));
 });
+
+// Android-Tracker-App: die APK liegt NICHT im Repository, sondern wird nach data/app/regatta-tracker.apk kopiert (siehe tracker-app/README.md).
+// Bewusst oeffentlich (keine Anmeldung): enthaelt keine Daten, und das Handy laedt sie ueber den Browser.
+const APK_PATH = path.join(store.DATA_DIR, 'app', 'regatta-tracker.apk');
+app.get('/tracker.apk', (req, res) => {
+  if (!fs.existsSync(APK_PATH)) return res.status(404).type('text').send('Die App ist auf diesem Server noch nicht hinterlegt.');
+  res.download(APK_PATH, 'regatta-tracker.apk');
+});
+app.get('/api/app', (req, res) => res.json({ available: fs.existsSync(APK_PATH) }));
 
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 

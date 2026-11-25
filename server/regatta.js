@@ -300,7 +300,9 @@ function setCourse(marks, radiusM, exact) {
   }
   const r = Number.isFinite(radiusM) ? Math.min(1000, Math.max(30, radiusM)) : 250;
   // exact: Positionen sind von der Wettfahrtleitung eingegeben (genau) und werden NICHT aus den Logs verfeinert
-  state.course = { marks: marks.map((m) => (isGate(m) ? { a: point(m.a), b: point(m.b) } : point(m))), radiusM: r, exact: !!exact };
+  // Einzelne Bojen koennen eine Umrundungsrichtung tragen: 'port' = Boje an Backbord lassen (gegen den Uhrzeigersinn), 'starboard' = an Steuerbord (im Uhrzeigersinn)
+  const withRounding = (m) => (m.rounding === 'port' || m.rounding === 'starboard' ? { ...point(m), rounding: m.rounding } : point(m));
+  state.course = { marks: marks.map((m) => (isGate(m) ? { a: point(m.a), b: point(m.b) } : withRounding(m))), radiusM: r, exact: !!exact };
   const ac = activeCourse();
   if (ac) ac.course = JSON.parse(JSON.stringify(state.course));
   save();
@@ -492,9 +494,13 @@ function computeResults(race) {
     if (distance && pl && a.startPassTs && race.course && race.course.marks && race.course.marks.length) {
       markResults = courseLib.checkMarks({
         pl, fixes, approxMarks: race.course.marks, startPassTs: a.startPassTs, endTs: a.finishTs || raceEnd(race), options: { radiusM: race.course.radiusM || 250 }
-      }).map((m) => ({ n: m.k + 1, ts: m.t, passOnly: m.passOnly, inOrder: m.inOrder }));
+      }).map((m) => ({ n: m.k + 1, ts: m.t, passOnly: m.passOnly, inOrder: m.inOrder, rounding: m.rounding, side: m.side, wrongSide: m.wrongSide }));
       const missing = markResults.filter((m) => m.ts == null).map((m) => m.n);
       if (missing.length) a.warnings = a.warnings.concat(`Boje ${missing.join(', ')} nicht gerundet/passiert (Radius ${race.course.radiusM || 250} m) - bitte pruefen`);
+      const SIDE = { port: 'an Backbord', starboard: 'an Steuerbord' };
+      markResults.filter((m) => m.wrongSide).forEach((m) => {
+        a.warnings = a.warnings.concat(`Boje ${m.n} ${SIDE[m.side]} gelassen, verlangt ist ${SIDE[m.rounding]} (falsche Umrundungsrichtung) - bitte pruefen`);
+      });
       const wrongOrder = markResults.filter((m) => m.ts != null && !m.inOrder).map((m) => m.n);
       if (wrongOrder.length) a.warnings = a.warnings.concat(`Boje ${wrongOrder.join(', ')} wurde vor einer frueheren Boje gerundet (falsche Reihenfolge) - bitte pruefen`);
     }

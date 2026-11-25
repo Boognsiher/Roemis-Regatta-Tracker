@@ -20,7 +20,7 @@ html, body {
   color: var(--text);
 }
 
-#app { height: 100%; display: flex; flex-direction: column; }
+#app { height: 100%; height: 100dvh; display: flex; flex-direction: column; }
 
 .topbar {
   display: flex;
@@ -52,7 +52,51 @@ html, body {
   padding: 0.75rem;
 }
 
-#map { flex: 1; background: #0b1218; }
+#map { flex: 1; background: #0b1218; min-height: 0; }
+
+/* Griff der Bootliste (nur auf dem Handy sichtbar) */
+#sidebar-toggle { display: none; }
+
+/* Handy / schmale Fenster: die Karte soll den Bildschirm fuellen. Die Bootliste liegt als einklappbares Feld unten (zuerst eingeklappt: eine Zeile). */
+@media (max-width: 760px) {
+  .topbar { flex-wrap: wrap; gap: 0.4rem; padding: 0.4rem 0.6rem; }
+  .topbar h1 { font-size: 1rem; }
+  .topbar > span { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .admin-link { font-size: 0.78rem; padding: 0.25rem 0.5rem; }
+
+  .layout { flex-direction: column; }
+  #map { order: 1; flex: 1 1 auto; }
+  #sidebar {
+    order: 2;
+    width: 100%;
+    flex: 0 0 auto;
+    max-height: 45vh;
+    max-height: 45dvh;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 0 0.6rem 0.6rem;
+  }
+  #sidebar.collapsed { max-height: none; overflow: hidden; padding-bottom: 0; }
+  #sidebar.collapsed > :not(#sidebar-toggle) { display: none; }
+  #sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: calc(100% + 1.2rem);
+    margin: 0 -0.6rem 0.4rem;
+    padding: 0.7rem 0.8rem;
+    background: var(--panel-2);
+    color: var(--text);
+    border: none;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+    cursor: pointer;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  #sidebar.collapsed #sidebar-toggle { margin-bottom: 0; border-bottom: none; }
+}
 
 .hint { color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
 .hint a { color: var(--accent); }
