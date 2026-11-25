@@ -304,6 +304,16 @@ eine "Wie ist meine IP"-Seite anzeigt, und nicht im Bereich 100.64.x.x - sonst C
   (nur ueber den Reverse-Proxy) aus dem Internet erreichbar.
 - Die Regatta-App hat bewusst keine Benutzerverwaltung: Admin ist per `ADMIN_TOKEN` geschuetzt, die Live-Karte ist oeffentlich.
 
+### Update per Skript (NAS holt sich den Stand selbst)
+
+`scripts/update-nas.sh` laedt den neuesten Stand von GitHub, ersetzt `server`, `public`, `scripts`, `docs`, README und die Docker-Build-Dateien, baut den Container neu und prueft `/healthz`. `.env`, `data/` und `docker-compose.yml` bleiben unberuehrt; die bisherigen Dateien liegen danach in `.update-backup/`.
+
+Einmalig `scripts/update-nas.sh` in den Projektordner des NAS legen (wie `server`/`public`). Danach aus Windows PowerShell:
+
+    ssh -t BENUTZER@NAS-IP "cd /PFAD/ZUM/PROJEKT && sudo sh scripts/update-nas.sh"
+
+Ist das Repository privat, legt man ein GitHub-Token mit reinem Lese-Recht (Contents: Read) in die Datei `.github-token` im Projektordner (wird nie hochgeladen, steht in `.gitignore`).
+
 ## Konfiguration (Umgebungsvariablen)
 
 | Variable | Standard | Beschreibung |

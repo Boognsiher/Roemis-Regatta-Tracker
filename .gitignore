@@ -7,3 +7,5 @@ data/*.json
 data/history/
 .pio/
 firmware/include/secrets.h
+.github-token
+.update-backup/
