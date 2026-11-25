@@ -10,6 +10,7 @@ const { customAlphabet } = require('nanoid');
 const store = require('./store');
 const timing = require('./timing');
 const courseLib = require('./course');
+const autostart = require('./autostart');
 
 const FILE = path.join(store.DATA_DIR, 'regatta.json');
 const genId = customAlphabet('23456789abcdefghjkmnpqrstuvwxyz', 6);
@@ -329,7 +330,7 @@ const parseCutoff = (v, fallback) => Math.min(24 * 60, Math.max(10, parseInt(v, 
  * explizit angegebene Werte (Runden, Zielschluss, Modus, ...) ueberschreiben die Vorgaben des Kurses.
  * Mit startTs (auch in der Vergangenheit) wird sie sofort aus den vorhandenen Aufzeichnungen gewertet.
  */
-function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode, startOnExtension, courseId }) {
+function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode, startOnExtension, courseId, auto, autoFrom, autoTo }) {
   const c = (courseId && courseById(courseId)) || activeCourse() || newCourse();
   if (courseId && !courseById(courseId)) throw httpError(404, 'Kurs unbekannt');
   const pick = (v, fallback) => (v === undefined || v === null || v === '' ? fallback : v);
@@ -344,6 +345,11 @@ function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode
     lapMode: normLapMode(pick(lapMode, c.lapMode)),
     startOnExtension: pick(startOnExtension, c.startOnExtension) === true || pick(startOnExtension, c.startOnExtension) === 'true',
     startTs: null,
+    auto: auto === true || auto === 'true',
+    autoFrom: isNum(autoFrom) ? autoFrom : Date.now(),   // ab wann Positionen fuer die Start-Erkennung zaehlen
+    autoTo: isNum(autoTo) ? autoTo : null,                 // bis wann (null = laufend); in der Vergangenheit = nachtraegliche Auswertung
+    classStarts: {},                                       // automatisch erkannte Startzeiten je Klasse { classId: { ts, final, boats, early } }
+    classEnds: {},                                         // automatisch erkanntes Ende je Klasse { classId: { ts, reason } }
     line: clone(c.line),
     finishLine: clone(c.finishLine),
     course: clone(c.course),
@@ -351,7 +357,7 @@ function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode
     official: false,
     createdAt: Date.now()
   };
-  if (startTs != null && startTs !== '') {
+  if (!race.auto && startTs != null && startTs !== '') {
     if (!isNum(startTs)) throw httpError(400, 'startTs ungueltig');
     if (!race.line) throw httpError(400, 'Zuerst Start-/Ziellinie festlegen');
     race.startTs = startTs;
@@ -363,7 +369,108 @@ function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode
 
 /** Zielschluss einer Wettfahrt (ms): Durchgaenge danach zaehlen nicht mehr. */
 function raceEnd(race) {
+  if (race.auto) {
+    const ends = Object.values(race.classStarts || {}).map((s) => s.ts + (race.cutoffMinutes || 180) * 60000);
+    return ends.length ? Math.max(...ends) : null;
+  }
   return race.startTs == null ? null : race.startTs + (race.cutoffMinutes || 180) * 60000;
+}
+
+/** Startzeit einer Klasse (ms): bei automatischer Erkennung die erkannte Klassen-Startzeit, sonst der gemeinsame Start. */
+function classStart(race, classId) {
+  if (race.auto) { const s = (race.classStarts || {})[classId]; return s ? s.ts : null; }
+  return race.startTs;
+}
+const classCutoffTs = (race, start) => start + (race.cutoffMinutes || 180) * 60000;
+
+/** Boote (trackerId -> classId) der Wettfahrt, nur mit gueltiger Klasse und bekanntem Tracker. */
+function raceBoats() {
+  return Object.entries(state.boats).filter(([id, b]) => store.getTracker(id) && state.classes.some((c) => c.id === b.classId)).map(([id, b]) => ({ trackerId: id, classId: b.classId }));
+}
+
+/**
+ * Automatische Start-Erkennung aktualisieren (nur Wettfahrten mit auto=true). Endgueltig erkannte Starts (final) bleiben stehen.
+ * race.startTs wird auf den fruehesten Klassenstart gesetzt, damit die uebrige Oberflaeche (Anzeige "gestartet") unveraendert funktioniert.
+ */
+function refreshAuto(race, now = Date.now()) {
+  if (!race.auto || race.official) return;
+  const pl = timing.prepareLine(race.line);
+  if (!pl) return;
+  race.classStarts = race.classStarts || {};
+  const upTo = Math.min(now, race.autoTo != null ? race.autoTo : now);
+  const complete = race.autoTo != null && now >= race.autoTo;
+  const boats = raceBoats();
+  let changed = false;
+  for (const cls of state.classes) {
+    const cur = race.classStarts[cls.id];
+    if (cur && cur.final) continue;
+    const cands = {};
+    for (const b of boats.filter((x) => x.classId === cls.id)) {
+      const fixes = store.readHistoryCached(b.trackerId).filter((f) => f.ts >= race.autoFrom && f.ts <= upTo);
+      cands[b.trackerId] = autostart.boatStartCandidates(pl, fixes, { minLapSeconds: race.minLapSeconds, startExtensionM: race.startOnExtension ? 400 : 0 });
+    }
+    const det = autostart.detectClassStart(cands, upTo, { complete, minLapSeconds: race.minLapSeconds });
+    if (det.ts == null) {
+      if (cur) { delete race.classStarts[cls.id]; changed = true; }
+      continue;
+    }
+    const next = { ts: det.ts, final: det.final, boats: det.boats, early: det.early };
+    if (JSON.stringify(cur) !== JSON.stringify(next)) { race.classStarts[cls.id] = next; changed = true; }
+  }
+  const starts = Object.values(race.classStarts).map((s) => s.ts);
+  const first = starts.length ? Math.min(...starts) : null;
+  if (race.startTs !== first) { race.startTs = first; changed = true; }
+  if (changed) { save(); liveCache.delete(race.id); }
+}
+
+/**
+ * Ende je Klasse festhalten: alle gestarteten Boote im Ziel (Zeit des letzten) oder Zielschluss erreicht.
+ * meta: [{ classId, started, status, finishTs }] aus der Auswertung.
+ */
+function refreshEnds(race, meta, now = Date.now()) {
+  if (!race.auto || race.official) return;
+  race.classEnds = race.classEnds || {};
+  let changed = false;
+  for (const cls of state.classes) {
+    const cs = (race.classStarts || {})[cls.id];
+    if (!cs || !cs.final || race.classEnds[cls.id]) continue;
+    const mine = meta.filter((m) => m.classId === cls.id && m.started);
+    let end = null;
+    if (now >= classCutoffTs(race, cs.ts)) end = { ts: classCutoffTs(race, cs.ts), reason: 'Zielschluss' };
+    else if (mine.length && mine.every((m) => m.status === 'FIN' && m.finishTs != null)) end = { ts: Math.max(...mine.map((m) => m.finishTs)), reason: 'alle im Ziel' };
+    if (end) { race.classEnds[cls.id] = end; changed = true; }
+  }
+  if (changed) { save(); liveCache.delete(race.id); }
+}
+
+/** Phase einer Klasse: WAIT (kein Start erkannt), STARTING (Start erkannt, noch nicht endgueltig), RACING, DONE. */
+/**
+ * Regelmaessig aufrufen (index.js): wertet automatische Wettfahrten aus, damit Start und Ende auch ohne Zuschauer erkannt werden
+ * (die Wettfahrt erscheint dann von selbst als gestartet bzw. beendet). Nur bis 24 h nach Scharfstellung und nur solange nicht alle Klassen beendet sind.
+ */
+function tickAuto(now = Date.now()) {
+  for (const race of state.races) {
+    if (!race.auto || race.official || !race.line) continue;
+    if (now > (race.autoFrom || 0) + 24 * 3600000) continue;
+    const cls = state.classes.filter((c) => raceBoats().some((b) => b.classId === c.id));
+    if (cls.length && cls.every((c) => (race.classEnds || {})[c.id])) continue;
+    computeResults(race, now);
+  }
+}
+
+function classPhase(race, classId) {
+  const cs = (race.classStarts || {})[classId];
+  if (!cs) return 'WAIT';
+  if ((race.classEnds || {})[classId]) return 'DONE';
+  return cs.final ? 'RACING' : 'STARTING';
+}
+
+function autoClasses(race) {
+  return state.classes.filter((c) => raceBoats().some((b) => b.classId === c.id)).map((c) => {
+    const cs = (race.classStarts || {})[c.id] || null;
+    const ce = (race.classEnds || {})[c.id] || null;
+    return { classId: c.id, name: c.name, phase: classPhase(race, c.id), startTs: cs ? cs.ts : null, startFinal: !!(cs && cs.final), startBoats: cs ? cs.boats.length : 0, early: cs ? cs.early.length : 0, endTs: ce ? ce.ts : null, endReason: ce ? ce.reason : null };
+  });
 }
 
 /** Linie und Kurs der Wettfahrt auf die aktuell gespeicherten Werte setzen (fuer nachtraegliche Wettfahrten). */
@@ -386,6 +493,7 @@ function updateRace(id, patch) {
   if (patch.minLapSeconds != null) race.minLapSeconds = Math.max(10, parseInt(patch.minLapSeconds, 10) || race.minLapSeconds);
   if (patch.startOnExtension != null) race.startOnExtension = patch.startOnExtension === true || patch.startOnExtension === 'true';
   if (patch.lapMode != null) { race.lapMode = normLapMode(patch.lapMode); if (race.lapMode === 'distance') race.laps = 1; }
+  if (patch.auto != null) { race.auto = patch.auto === true || patch.auto === 'true'; if (race.auto) { race.classStarts = {}; race.classEnds = {}; race.startTs = null; race.autoFrom = isNum(patch.autoFrom) ? patch.autoFrom : Date.now(); } }
   if (patch.cutoffMinutes != null) race.cutoffMinutes = parseCutoff(patch.cutoffMinutes, race.cutoffMinutes || 180);
   save();
   return race;
@@ -407,6 +515,7 @@ function startRace(id, ts) {
   const src = courseById(race.courseId);
   if (src && src.line) { race.line = clone(src.line); race.course = clone(src.course); }
   if (!race.line) throw httpError(400, 'Zuerst Start-/Ziellinie festlegen');
+  race.auto = false;                           // manueller Start gilt fuer alle Klassen und ersetzt die automatische Erkennung
   race.startTs = t;
   save();
   return race;
@@ -416,6 +525,8 @@ function clearStart(id) {
   const race = getRace(id);
   assertEditable(race);
   race.startTs = null;
+  race.classStarts = {};
+  race.classEnds = {};
   save();
   return race;
 }
@@ -457,17 +568,18 @@ function setOfficial(id, official) {
 // ---------- Auswertung ----------
 
 /** Nur die Positionen im Zeitfenster der Wettfahrt (15 min vor Start bis kurz nach Zielschluss). */
-function windowFixes(fixes, race) {
-  const from = race.startTs - 15 * 60000;
-  const to = raceEnd(race) + 5 * 60000;
+function windowFixes(fixes, race, start = race.startTs) {
+  const from = start - 15 * 60000;
+  const to = classCutoffTs(race, start) + 5 * 60000;
   return fixes.filter((f) => f.ts >= from && f.ts <= to);
 }
 
-function computeResults(race) {
+function computeResults(race, now = Date.now()) {
+  refreshAuto(race, now);
   const base = {
     race: {
       id: race.id, name: race.name, laps: race.laps, startTs: race.startTs,
-      official: race.official, officialAt: race.officialAt || null
+      official: race.official, officialAt: race.officialAt || null, auto: !!race.auto, classes: race.auto ? autoClasses(race) : []
     },
     entries: []
   };
@@ -478,22 +590,27 @@ function computeResults(race) {
   const finishLine = distance ? resolveFinishLine(race) : null;          // null = Ziel ueber die Start-Linie, undefined = Ziellinie ohne Referenz
   const finishPl = finishLine ? timing.prepareLine(finishLine) : null;
   const entries = [];
+  const meta = [];
   for (const [trackerId, boat] of Object.entries(state.boats)) {
     const tracker = store.getTracker(trackerId);
     const cls = state.classes.find((c) => c.id === boat.classId);
     if (!tracker || !cls) continue;
     const ov = race.overrides[trackerId] || {};
+    const cStart = classStart(race, cls.id);                       // Startzeit dieser Klasse (null = Klasse noch nicht gestartet)
+    const cEnd = cStart == null ? null : classCutoffTs(race, cStart);
 
-    const fixes = pl ? windowFixes(store.readHistoryCached(trackerId), race) : [];
-    const a = pl
-      ? timing.analyzeBoat(pl, fixes, { ...race, endTs: raceEnd(race), finishPl })
+    const fixes = pl && cStart != null ? windowFixes(store.readHistoryCached(trackerId), race, cStart) : [];
+    const a = pl && cStart == null
+      ? { status: 'DNS', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: ['Klasse noch nicht gestartet'] }
+      : pl
+      ? timing.analyzeBoat(pl, fixes, { ...race, startTs: cStart, endTs: cEnd, finishPl })
       : { status: 'DNS', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: ['Keine Linie definiert'] };
     if (distance && finishLine === undefined) a.warnings = a.warnings.concat('Ziellinie hat keine Referenz (Kursseite): Referenzpunkt eingeben oder Bojen festlegen');
     // Langstrecke: Bojen der Reihe nach pruefen (Start-Durchgang bis Ziel bzw. Zielschluss); fehlende werden gemeldet, ohne die Wertung zu aendern
     let markResults = null;
     if (distance && pl && a.startPassTs && race.course && race.course.marks && race.course.marks.length) {
       markResults = courseLib.checkMarks({
-        pl, fixes, approxMarks: race.course.marks, startPassTs: a.startPassTs, endTs: a.finishTs || raceEnd(race), options: { radiusM: race.course.radiusM || 250 }
+        pl, fixes, approxMarks: race.course.marks, startPassTs: a.startPassTs, endTs: a.finishTs || cEnd, options: { radiusM: race.course.radiusM || 250 }
       }).map((m) => ({ n: m.k + 1, ts: m.t, passOnly: m.passOnly, inOrder: m.inOrder, rounding: m.rounding, side: m.side, wrongSide: m.wrongSide }));
       const missing = markResults.filter((m) => m.ts == null).map((m) => m.n);
       if (missing.length) a.warnings = a.warnings.concat(`Boje ${missing.join(', ')} nicht gerundet/passiert (Radius ${race.course.radiusM || 250} m) - bitte pruefen`);
@@ -509,7 +626,7 @@ function computeResults(race) {
     const warnings = a.warnings.slice();
     if (ov.finishTs != null) {
       finishTs = ov.finishTs;
-      elapsedSec = (finishTs - race.startTs) / 1000;
+      elapsedSec = (finishTs - cStart) / 1000;
       status = 'FIN';
       warnings.push('Zielzeit manuell gesetzt');
     }
@@ -519,6 +636,7 @@ function computeResults(race) {
     if (status === 'FIN' && elapsedSec != null) {
       correctedSec = timing.correctedSeconds(elapsedSec, cls.yardstick) + (ov.penaltySec || 0);
     }
+    meta.push({ classId: cls.id, started: (a.startCrossingTs ?? a.startPassTs ?? null) != null, status, finishTs });
     entries.push({
       trackerId,
       name: tracker.name,
@@ -540,6 +658,8 @@ function computeResults(race) {
       warnings
     });
   }
+  refreshEnds(race, meta, now);
+  if (race.auto) base.race.classes = autoClasses(race);
   timing.rankEntries(entries);
   const order = (e) => (e.rank != null ? e.rank : 1e6);
   entries.sort((x, y) => order(x) - order(y) || x.name.localeCompare(y.name, 'de'));
@@ -573,7 +693,7 @@ function publicState() {
     activeCourseId: state.activeCourseId,
     races: state.races.map((r) => ({
       id: r.id, name: r.name, courseId: r.courseId || null, courseName: r.courseName || null, laps: r.laps, minLapSeconds: r.minLapSeconds, cutoffMinutes: r.cutoffMinutes || 180,
-      lapMode: r.lapMode || 'bounce', startOnExtension: r.startOnExtension === true, startTs: r.startTs, official: r.official, overrides: r.overrides, hasLine: !!r.line, hasFinishLine: !!r.finishLine, hasCourse: !!r.course
+      lapMode: r.lapMode || 'bounce', startOnExtension: r.startOnExtension === true, startTs: r.startTs, official: r.official, auto: !!r.auto, autoFrom: r.autoFrom || null, autoTo: r.autoTo || null, classes: r.auto ? autoClasses(r) : [], overrides: r.overrides, hasLine: !!r.line, hasFinishLine: !!r.finishLine, hasCourse: !!r.course
     }))
   };
 }
@@ -585,34 +705,65 @@ const liveCache = new Map();
 
 /** Laeuft die Wettfahrt gerade (Start gesetzt, noch nicht Zielschluss, nicht offiziell abgeschlossen)? */
 function isRunning(race, now = Date.now()) {
+  if (race.auto) {
+    return !race.official && Object.entries(race.classStarts || {}).some(([id, s]) => !(race.classEnds || {})[id] && now < classCutoffTs(race, s.ts));
+  }
   return race.startTs != null && !race.official && now < raceEnd(race);
 }
 
 function computeLive(race, now = Date.now()) {
-  const boats = [];
   const from = race.startTs - 15 * 60000;
+  const boats = [];
   for (const [trackerId, boat] of Object.entries(state.boats)) {
     const tracker = store.getTracker(trackerId);
     const cls = state.classes.find((c) => c.id === boat.classId);
     if (!tracker || !cls) continue;
     boats.push({
-      trackerId, name: tracker.name, sailNo: boat.sailNo, helm: boat.helm, className: cls.name, yardstick: cls.yardstick,
+      trackerId, name: tracker.name, sailNo: boat.sailNo, helm: boat.helm, className: cls.name, yardstick: cls.yardstick, classId: cls.id,
       color: tracker.color,
       fixes: store.readHistoryCached(trackerId).filter((f) => f.ts >= from && f.ts <= now)
     });
   }
-  const ranking = courseLib.liveRanking({
-    line: race.line,
-    race: { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: raceEnd(race), lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension === true, finishLine: race.lapMode === 'distance' ? (resolveFinishLine(race) || null) : null },
-    approxMarks: race.course ? race.course.marks : [],
-    boats,
-    now,
-    options: race.course ? { radiusM: race.course.radiusM || 250, exact: !!race.course.exact } : {}
+  const mkRace = (startTs) => ({
+    startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: startTs == null ? null : classCutoffTs(race, startTs), lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension === true,
+    finishLine: race.lapMode === 'distance' ? (resolveFinishLine(race) || null) : null
   });
+  const opts = race.course ? { radiusM: race.course.radiusM || 250, exact: !!race.course.exact } : {};
+  const rank = (args) => courseLib.liveRanking({ line: race.line, approxMarks: race.course ? race.course.marks : [], now, options: opts, ...args });
+
+  let ranking;
+  if (!race.auto) {
+    ranking = rank({ race: mkRace(race.startTs), boats });
+  } else {
+    // Jede Klasse hat ihre eigene Startzeit: pro Klasse rechnen, danach zusammenfuehren und neu nach berechneter Zeit ordnen
+    const parts = [];
+    const waiting = [];
+    for (const cls of state.classes) {
+      const group = boats.filter((b) => b.classId === cls.id);
+      if (!group.length) continue;
+      const cs = classStart(race, cls.id);
+      if (cs == null) { waiting.push(...group); continue; }
+      parts.push(rank({ race: mkRace(cs), boats: group.map((b) => ({ ...b, fixes: b.fixes.filter((f) => f.ts >= cs - 15 * 60000) })) }));
+    }
+    const head = parts[0] || rank({ race: mkRace(null), boats: [] });
+    ranking = { ...head, entries: parts.flatMap((x) => x.entries) };
+    ranking.entries.push(...waiting.map((b) => ({
+      trackerId: b.trackerId, name: b.name, sailNo: b.sailNo, helm: b.helm, className: b.className, yardstick: b.yardstick,
+      status: 'PRESTART', lapsDone: 0, lapNow: 1, lapUncertain: false, marksDone: 0, progressM: 0, progressPct: 0, elapsedSec: null,
+      correctedSec: null, projectedCorrectedSec: null, rank: null, gapCorrectedSec: null, gapM: null, speedKn: null, lastFixAgeSec: null
+    })));
+    const time = (e) => (e.status === 'FIN' ? e.correctedSec : e.projectedCorrectedSec);
+    const ranked = ranking.entries.filter((e) => time(e) != null).sort((x, y) => time(x) - time(y));
+    ranking.entries.forEach((e) => { e.rank = null; e.gapCorrectedSec = null; });
+    ranked.forEach((e, i) => { e.rank = i + 1; e.gapCorrectedSec = time(e) - time(ranked[0]); });
+    ranking.leaderId = ranked.length ? ranked[0].trackerId : null;
+    ranking.entries.sort((x, y) => (x.rank ?? 1e6) - (y.rank ?? 1e6) || y.progressM - x.progressM || x.name.localeCompare(y.name, 'de'));
+    ranking.elapsedSec = race.startTs == null ? null : Math.max(0, (now - race.startTs) / 1000);
+  }
   const colors = Object.fromEntries(boats.map((b) => [b.trackerId, b.color]));
   ranking.entries.forEach((e) => { e.color = colors[e.trackerId]; });
   return {
-    race: { id: race.id, name: race.name, laps: race.laps, startTs: race.startTs, official: race.official, running: isRunning(race, now) },
+    race: { id: race.id, name: race.name, laps: race.laps, startTs: race.startTs, official: race.official, running: isRunning(race, now), auto: !!race.auto, classes: race.auto ? autoClasses(race) : [] },
     ...ranking
   };
 }
@@ -620,7 +771,16 @@ function computeLive(race, now = Date.now()) {
 /** Wie computeLive, aber hoechstens alle LIVE_TTL_MS neu berechnet (viele Zuschauer, gleiche Daten). */
 function getLive(id, now = Date.now()) {
   const race = getRace(id);
-  if (race.startTs == null) throw httpError(400, 'Wettfahrt hat keinen Start');
+  if (race.auto) {
+    const c0 = liveCache.get(id);
+    if (c0 && now - c0.at < LIVE_TTL_MS) return c0.data;
+    computeResults(race, now);                                    // aktualisiert Start-Erkennung und Klassen-Ende
+    if (race.startTs == null) {
+      const waiting = { race: { id: race.id, name: race.name, laps: race.laps, startTs: null, official: race.official, running: false, auto: true, classes: autoClasses(race) }, updatedAt: now, elapsedSec: null, needsCourse: false, marks: [], entries: [], leaderId: null, foremostId: null };
+      liveCache.set(id, { at: now, data: waiting });
+      return waiting;
+    }
+  } else if (race.startTs == null) throw httpError(400, 'Wettfahrt hat keinen Start');
   const c = liveCache.get(id);
   if (c && now - c.at < LIVE_TTL_MS) return c.data;
   const data = computeLive(race, now);
@@ -690,6 +850,6 @@ module.exports = {
   flush, state, STATUS_CODES, httpError, publicState,
   setCourse, setFinishLine, resolveFinishLine, applyGeometry, raceEnd, windowFixes,
   addClass, importClasses, deleteClass, registerBoat, unregisterBoat, setLine,
-  getRace, createRace, updateRace, deleteRace, startRace, clearStart, setOverride, setOfficial,
+  getRace, tickAuto, createRace, updateRace, deleteRace, startRace, clearStart, setOverride, setOfficial,
   computeResults, toCsv
 };

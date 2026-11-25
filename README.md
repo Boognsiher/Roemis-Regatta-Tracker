@@ -191,6 +191,18 @@ Berechnung:
 
 Tests der Rechenlogik: `npm test`.
 
+### Automatischer Start und automatisches Ende (ohne Startsignal)
+
+Beim Anlegen einer Wettfahrt "Start und Ende automatisch erkennen" ankreuzen. Dann braucht es keinen Knopfdruck zum Start:
+
+- **Start je Klasse:** Pro Klasse zaehlen die Durchgaenge Vorstartseite -> Kursseite durch die Startlinie. Wer sofort wieder zurueckfaehrt (Probe-Querung, abgebrochener Start), zaehlt nicht. Das Zeitfenster (2 Minuten) mit den meisten verschiedenen Booten ist der Start-Pulk; die **Startzeit der Klasse ist die fruehste Querung im Pulk**. Alle anderen Boote verlieren die Zeit bis zu ihrer eigenen Querung. Klassen koennen versetzt starten, jede hat ihre eigene Startzeit; die Zeit laeuft pro Klasse ab ihrem Start.
+- **Endgueltig:** Eine erkannte Startzeit kann sich aendern, bis 3 Minuten nach dem Pulk vergangen sind (weitere Boote queren noch). Danach bleibt sie fest.
+- **Ende je Klasse:** sobald alle gestarteten Boote der Klasse im Ziel sind (Ende = Zeit des letzten), spaetestens zum Zielschluss. Wer bis dahin nicht im Ziel ist, wird wie bisher als DNF gewertet; wer die Linie nie gequert hat, als DNS.
+- **Nachtraeglich:** `autoFrom`/`autoTo` (ms) legen das Zeitfenster fest, in dem Positionen fuer die Erkennung zaehlen (Standard: ab Anlegen der Wettfahrt, laufend). Liegt `autoTo` in der Vergangenheit, sind Startzeiten sofort endgueltig.
+- Der Server wertet automatische Wettfahrten alle 10 Sekunden aus (bis 24 Stunden nach dem Scharfstellen), die Wettfahrt erscheint also von selbst als "gestartet". Ein manuelles "Startsignal" schaltet die Automatik fuer diese Wettfahrt ab.
+
+**Grenzen:** Ohne Startsignal laesst sich ein Fruehstart (OCS) der ganzen Klasse nicht erkennen, und eine einzelne Fruehquerung im Pulk setzt die Startzeit leicht nach vorn. Bei einer Klasse mit nur einem Boot gilt dessen erste gueltige Querung. Auf dem Wasser noch nicht getestet (nur mit simulierten Fahrten).
+
 ## Damit das auch auf dem Wasser funktioniert (wichtig!)
 
 Der Server muss aus dem Mobilfunknetz heraus erreichbar sein, sonst kommen keine Positionen an.
