@@ -18,7 +18,7 @@ const STATUS_CODES = ['DNS', 'DNF', 'DSQ', 'OCS', 'RET', 'DNC'];
 
 /** @type {{classes: object[], boats: Record<string, object>, line: object|null, races: object[]}} */
 const state = Object.assign(
-  { classes: [], boats: {}, line: null, course: null, courses: [], activeCourseId: null, races: [] },
+  { classes: [], boats: {}, line: null, finishLine: null, course: null, courses: [], activeCourseId: null, races: [] },
   store.loadJson(FILE, {})
 );
 
@@ -27,8 +27,12 @@ const state = Object.assign(
 // aktiven Kurses (der Editor bearbeitet immer den aktiven Kurs); Wettfahrten kopieren Geometrie und Regeln eines Kurses beim Anlegen.
 const COURSE_KINDS = {
   loop: { lapMode: 'loop', name: 'Neuer Rundkurs', description: 'Immer in dieselbe Richtung durch die Linie (Richtung Boje 1); Start und Ziel nur zwischen den Marken.' },
-  bounce: { lapMode: 'bounce', name: 'Neuer Kurs (hin und zurueck)', description: 'Linie wird je Runde zweimal gegenlaeufig gekreuzt (Start auf die Kursseite, Rundenende zurueck).' }
+  bounce: { lapMode: 'bounce', name: 'Neuer Kurs (hin und zurueck)', description: 'Linie wird je Runde zweimal gegenlaeufig gekreuzt (Start auf die Kursseite, Rundenende zurueck).' },
+  distance: { lapMode: 'distance', name: 'Neue Langstrecke (Start, Bojen, Ziel)', description: 'Eine Wertung von Start bis Ziel, keine Runden: Start-Linie, Bojen der Reihe nach, Ziel (eigene Ziellinie oder dieselbe Linie zurueck). Die Bojen werden geprueft und fehlende gemeldet.' }
 };
+
+/** Zaehlmodus normalisieren: 'loop' (Rundkurs), 'bounce' (hin und zurueck) oder 'distance' (Langstrecke Start - Bojen - Ziel). */
+const normLapMode = (v) => (v === 'bounce' ? 'bounce' : v === 'distance' ? 'distance' : 'loop');
 const DEFAULT_COURSE = {
   name: 'Rundkurs, Linie in der Mitte (Boje 1 oben, Boje 2 unten)',
   description: 'Durchgang immer Richtung Boje 1 zwischen Zielboot und Zielboje; Abstieg von Boje 1 zu Boje 2 ausserhalb der Linie (Verlaengerung = Runden-Anzeiger); Start und Ziel nur zwischen den Marken; 2 Runden.',
@@ -138,12 +142,13 @@ function newCourse(o = {}) {
     id: genId(),
     name: String(o.name || DEFAULT_COURSE.name).trim().slice(0, 80),
     description: String(o.description || '').slice(0, 400),
-    lapMode: o.lapMode === 'bounce' ? 'bounce' : 'loop',
+    lapMode: normLapMode(o.lapMode),
     startOnExtension: o.startOnExtension === true,
-    laps: Math.max(1, Math.min(10, parseInt(o.laps, 10) || 2)),
+    laps: normLapMode(o.lapMode) === 'distance' ? 1 : Math.max(1, Math.min(10, parseInt(o.laps, 10) || 2)),
     minLapSeconds: Math.max(10, parseInt(o.minLapSeconds, 10) || 120),
     cutoffMinutes: Math.min(24 * 60, Math.max(10, parseInt(o.cutoffMinutes, 10) || 180)),
     line: o.line ? JSON.parse(JSON.stringify(o.line)) : null,
+    finishLine: o.finishLine ? JSON.parse(JSON.stringify(o.finishLine)) : null,
     course: o.course ? JSON.parse(JSON.stringify(o.course)) : null
   };
 }
@@ -165,6 +170,7 @@ function migrateCourses() {
   if (!courseById(state.activeCourseId)) state.activeCourseId = state.courses[0].id;
   const a = activeCourse();
   state.line = a.line ? JSON.parse(JSON.stringify(a.line)) : null;
+  state.finishLine = a.finishLine ? JSON.parse(JSON.stringify(a.finishLine)) : null;
   state.course = a.course ? JSON.parse(JSON.stringify(a.course)) : null;
 }
 
@@ -193,9 +199,9 @@ function updateCourse(id, patch) {
   if (!c) throw httpError(404, 'Kurs unbekannt');
   if (patch.name != null) c.name = String(patch.name).trim().slice(0, 80) || c.name;
   if (patch.description != null) c.description = String(patch.description).slice(0, 400);
-  if (patch.lapMode != null) c.lapMode = patch.lapMode === 'bounce' ? 'bounce' : 'loop';
+  if (patch.lapMode != null) { c.lapMode = normLapMode(patch.lapMode); if (c.lapMode === 'distance') c.laps = 1; }
   if (patch.startOnExtension != null) c.startOnExtension = patch.startOnExtension === true || patch.startOnExtension === 'true';
-  if (patch.laps != null) c.laps = Math.max(1, Math.min(10, parseInt(patch.laps, 10) || c.laps));
+  if (patch.laps != null && c.lapMode !== 'distance') c.laps = Math.max(1, Math.min(10, parseInt(patch.laps, 10) || c.laps));
   if (patch.minLapSeconds != null) c.minLapSeconds = Math.max(10, parseInt(patch.minLapSeconds, 10) || c.minLapSeconds);
   if (patch.cutoffMinutes != null) c.cutoffMinutes = Math.min(24 * 60, Math.max(10, parseInt(patch.cutoffMinutes, 10) || c.cutoffMinutes));
   save();
@@ -208,6 +214,7 @@ function activateCourse(id) {
   if (!c) throw httpError(404, 'Kurs unbekannt');
   state.activeCourseId = c.id;
   state.line = c.line ? JSON.parse(JSON.stringify(c.line)) : null;
+  state.finishLine = c.finishLine ? JSON.parse(JSON.stringify(c.finishLine)) : null;
   state.course = c.course ? JSON.parse(JSON.stringify(c.course)) : null;
   save();
   return c;
@@ -234,6 +241,50 @@ function setLine(line) {
   if (ac) ac.line = JSON.parse(JSON.stringify(candidate));
   save();
   return state.line;
+}
+
+/**
+ * Ziellinie fuer die Langstrecke (eigene Linie, getrennt vom Start): { a, b, mark? } oder null (= Ziel ueber die Start-Linie). Die Referenz "mark" legt die
+ * Kursseite fest (Seite, von der die Boote kommen); ohne Angabe gilt die LETZTE Boje des Kurses (siehe resolveFinishLine).
+ */
+function setFinishLine(line) {
+  const ac = activeCourse();
+  if (line === null) {
+    state.finishLine = null;
+    if (ac) ac.finishLine = null;
+    save();
+    return null;
+  }
+  if (!line || !isPoint(line.a) || !isPoint(line.b) || (line.mark != null && !isPoint(line.mark))) {
+    throw httpError(400, 'Ziellinie braucht a und b (je lat/lon), optional mark');
+  }
+  const candidate = { a: point(line.a), b: point(line.b) };
+  if (line.mark != null) candidate.mark = point(line.mark);
+  const pj = timing.makeProjector((candidate.a.lat + candidate.b.lat) / 2, (candidate.a.lon + candidate.b.lon) / 2);
+  const pa = pj(candidate.a);
+  const pb = pj(candidate.b);
+  if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < 1) throw httpError(400, 'Ziellinie zu kurz (weniger als 1 m)');
+  if (candidate.mark && !timing.prepareLine(candidate)) throw httpError(400, 'Ziellinie ungueltig (Referenzpunkt liegt auf der Linie)');
+  state.finishLine = candidate;
+  if (ac) ac.finishLine = JSON.parse(JSON.stringify(candidate));
+  save();
+  return state.finishLine;
+}
+
+/**
+ * Ziellinie einer Wettfahrt mit Referenzpunkt (fuer timing.prepareLine): eingegebene Referenz, sonst die letzte Boje des Kurses (bei einem Tor deren Mitte).
+ * Rueckgabe: Linie | null (keine eigene Ziellinie) | undefined (Ziellinie vorhanden, aber ohne Referenz und ohne Kurs-Bojen).
+ */
+function resolveFinishLine(race) {
+  const f = race && race.finishLine;
+  if (!f) return null;
+  if (f.mark) return f;
+  const marks = race.course && race.course.marks;
+  if (!marks || !marks.length) return undefined;
+  const last = marks[marks.length - 1];
+  const mark = last.a && last.b ? { lat: (last.a.lat + last.b.lat) / 2, lon: (last.a.lon + last.b.lon) / 2 } : last;
+  const line = { a: f.a, b: f.b, mark };
+  return timing.prepareLine(line) ? line : undefined;
 }
 
 /**
@@ -285,13 +336,14 @@ function createRace({ name, laps, minLapSeconds, cutoffMinutes, startTs, lapMode
     name: String(name || `Wettfahrt ${state.races.length + 1}`).trim().slice(0, 60),
     courseId: c.id,
     courseName: c.name,
-    laps: Math.max(1, Math.min(10, parseInt(pick(laps, c.laps), 10) || 2)),
+    laps: normLapMode(pick(lapMode, c.lapMode)) === 'distance' ? 1 : Math.max(1, Math.min(10, parseInt(pick(laps, c.laps), 10) || 2)),
     minLapSeconds: Math.max(10, parseInt(pick(minLapSeconds, c.minLapSeconds), 10) || 120),
     cutoffMinutes: parseCutoff(pick(cutoffMinutes, c.cutoffMinutes), 180),
-    lapMode: pick(lapMode, c.lapMode) === 'bounce' ? 'bounce' : 'loop',
+    lapMode: normLapMode(pick(lapMode, c.lapMode)),
     startOnExtension: pick(startOnExtension, c.startOnExtension) === true || pick(startOnExtension, c.startOnExtension) === 'true',
     startTs: null,
     line: clone(c.line),
+    finishLine: clone(c.finishLine),
     course: clone(c.course),
     overrides: {},
     official: false,
@@ -318,7 +370,7 @@ function applyGeometry(id, { line = true, course = true, courseId } = {}) {
   assertEditable(race);
   const c = (courseId && courseById(courseId)) || courseById(race.courseId) || activeCourse();
   if (c) { race.courseId = c.id; race.courseName = c.name; }
-  if (line) race.line = clone(c ? c.line : state.line);
+  if (line) { race.line = clone(c ? c.line : state.line); race.finishLine = clone(c ? c.finishLine : state.finishLine); }
   if (course) race.course = clone(c ? c.course : state.course);
   save();
   return race;
@@ -328,10 +380,10 @@ function updateRace(id, patch) {
   const race = getRace(id);
   assertEditable(race);
   if (patch.name != null) race.name = String(patch.name).trim().slice(0, 60) || race.name;
-  if (patch.laps != null) race.laps = Math.max(1, Math.min(10, parseInt(patch.laps, 10) || race.laps));
+  if (patch.laps != null && race.lapMode !== 'distance') race.laps = Math.max(1, Math.min(10, parseInt(patch.laps, 10) || race.laps));
   if (patch.minLapSeconds != null) race.minLapSeconds = Math.max(10, parseInt(patch.minLapSeconds, 10) || race.minLapSeconds);
   if (patch.startOnExtension != null) race.startOnExtension = patch.startOnExtension === true || patch.startOnExtension === 'true';
-  if (patch.lapMode != null) race.lapMode = patch.lapMode === 'loop' ? 'loop' : 'bounce';
+  if (patch.lapMode != null) { race.lapMode = normLapMode(patch.lapMode); if (race.lapMode === 'distance') race.laps = 1; }
   if (patch.cutoffMinutes != null) race.cutoffMinutes = parseCutoff(patch.cutoffMinutes, race.cutoffMinutes || 180);
   save();
   return race;
@@ -420,6 +472,9 @@ function computeResults(race) {
   if (race.startTs == null) return base;
 
   const pl = timing.prepareLine(race.line);
+  const distance = race.lapMode === 'distance';
+  const finishLine = distance ? resolveFinishLine(race) : null;          // null = Ziel ueber die Start-Linie, undefined = Ziellinie ohne Referenz
+  const finishPl = finishLine ? timing.prepareLine(finishLine) : null;
   const entries = [];
   for (const [trackerId, boat] of Object.entries(state.boats)) {
     const tracker = store.getTracker(trackerId);
@@ -427,9 +482,22 @@ function computeResults(race) {
     if (!tracker || !cls) continue;
     const ov = race.overrides[trackerId] || {};
 
+    const fixes = pl ? windowFixes(store.readHistoryCached(trackerId), race) : [];
     const a = pl
-      ? timing.analyzeBoat(pl, windowFixes(store.readHistoryCached(trackerId), race), { ...race, endTs: raceEnd(race) })
+      ? timing.analyzeBoat(pl, fixes, { ...race, endTs: raceEnd(race), finishPl })
       : { status: 'DNS', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: ['Keine Linie definiert'] };
+    if (distance && finishLine === undefined) a.warnings = a.warnings.concat('Ziellinie hat keine Referenz (Kursseite): Referenzpunkt eingeben oder Bojen festlegen');
+    // Langstrecke: Bojen der Reihe nach pruefen (Start-Durchgang bis Ziel bzw. Zielschluss); fehlende werden gemeldet, ohne die Wertung zu aendern
+    let markResults = null;
+    if (distance && pl && a.startPassTs && race.course && race.course.marks && race.course.marks.length) {
+      markResults = courseLib.checkMarks({
+        pl, fixes, approxMarks: race.course.marks, startPassTs: a.startPassTs, endTs: a.finishTs || raceEnd(race), options: { radiusM: race.course.radiusM || 250 }
+      }).map((m) => ({ n: m.k + 1, ts: m.t, passOnly: m.passOnly, inOrder: m.inOrder }));
+      const missing = markResults.filter((m) => m.ts == null).map((m) => m.n);
+      if (missing.length) a.warnings = a.warnings.concat(`Boje ${missing.join(', ')} nicht gerundet/passiert (Radius ${race.course.radiusM || 250} m) - bitte pruefen`);
+      const wrongOrder = markResults.filter((m) => m.ts != null && !m.inOrder).map((m) => m.n);
+      if (wrongOrder.length) a.warnings = a.warnings.concat(`Boje ${wrongOrder.join(', ')} wurde vor einer frueheren Boje gerundet (falsche Reihenfolge) - bitte pruefen`);
+    }
 
     let { status, finishTs, elapsedSec } = a;
     const warnings = a.warnings.slice();
@@ -462,6 +530,7 @@ function computeResults(race) {
       uncertaintyMs: ov.finishTs != null ? null : a.uncertaintyMs,
       note: ov.note || '',
       lapInfo: a.lapInfo || null,
+      marks: markResults,
       warnings
     });
   }
@@ -492,12 +561,13 @@ function publicState() {
     classes: state.classes,
     boats: state.boats,
     line: state.line,
+    finishLine: state.finishLine,
     course: state.course,
     courses: state.courses,
     activeCourseId: state.activeCourseId,
     races: state.races.map((r) => ({
       id: r.id, name: r.name, courseId: r.courseId || null, courseName: r.courseName || null, laps: r.laps, minLapSeconds: r.minLapSeconds, cutoffMinutes: r.cutoffMinutes || 180,
-      lapMode: r.lapMode || 'bounce', startOnExtension: r.startOnExtension === true, startTs: r.startTs, official: r.official, overrides: r.overrides, hasLine: !!r.line, hasCourse: !!r.course
+      lapMode: r.lapMode || 'bounce', startOnExtension: r.startOnExtension === true, startTs: r.startTs, official: r.official, overrides: r.overrides, hasLine: !!r.line, hasFinishLine: !!r.finishLine, hasCourse: !!r.course
     }))
   };
 }
@@ -527,7 +597,7 @@ function computeLive(race, now = Date.now()) {
   }
   const ranking = courseLib.liveRanking({
     line: race.line,
-    race: { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: raceEnd(race), lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension === true },
+    race: { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: raceEnd(race), lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension === true, finishLine: race.lapMode === 'distance' ? (resolveFinishLine(race) || null) : null },
     approxMarks: race.course ? race.course.marks : [],
     boats,
     now,
@@ -612,7 +682,7 @@ module.exports = {
   listCourses, createCourse, updateCourse, activateCourse, deleteCourse, courseById, activeCourse,
   exportSelection, computeLive, getLive, isRunning, runningRaces,
   flush, state, STATUS_CODES, httpError, publicState,
-  setCourse, applyGeometry, raceEnd, windowFixes,
+  setCourse, setFinishLine, resolveFinishLine, applyGeometry, raceEnd, windowFixes,
   addClass, importClasses, deleteClass, registerBoat, unregisterBoat, setLine,
   getRace, createRace, updateRace, deleteRace, startRace, clearStart, setOverride, setOfficial,
   computeResults, toCsv

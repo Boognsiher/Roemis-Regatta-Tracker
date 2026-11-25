@@ -135,7 +135,7 @@ function detectRoundings(pts, marks, tFrom, tTo, radiusM, o, mid) {
 /** Auswertung eines Boots gegen die Bojen: Runden (Linie) und Rundungen je Runde. */
 function analyzeBoatCourse({ pl, fixes, race, marksXY, radiusM, o }) {
   const norm = timing.normalizeFixes(fixes);
-  const analysis = timing.analyzeBoat(pl, norm, { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: race.endTs ?? null, lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension === true });
+  const analysis = timing.analyzeBoat(pl, norm, { startTs: race.startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: race.endTs ?? null, lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension === true, finishPl: race.finishPl || null });
   const pts = toXY(pl, norm);
   const lastT = pts.length ? pts[pts.length - 1].t : race.startTs;
   const mid = { x: pl.a.x + pl.dx / 2, y: pl.a.y + pl.dy / 2 };
@@ -172,9 +172,14 @@ function minSpacing(nodes) {
 }
 
 /** Bojen erkennen: 1. Durchgang mit gezeichneten Punkten, 2. Durchgang mit den gefundenen Positionen. */
-function detectCourse({ pl, race, boatsFixes, approxMarks, options = {} }) {
+function detectCourse({ pl, race: race0, boatsFixes, approxMarks, options = {} }) {
   const o = { ...DEFAULTS, ...options };
   const mid = { x: pl.a.x + pl.dx / 2, y: pl.a.y + pl.dy / 2 };
+  // Langstrecke mit eigener Ziellinie: Ziel-Linie fuer die Auswertung vorbereiten und ihre Mitte (im Koordinatensystem der Start-Linie) merken
+  const fl = race0.finishLine || null;
+  const finishPl = fl ? timing.prepareLine(fl) : null;
+  const race = finishPl ? { ...race0, finishPl } : race0;
+  const endMid = finishPl ? (() => { const A = pl.proj(fl.a); const B = pl.proj(fl.b); return { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 }; })() : null;
   const toXY = (m) => {
     if (m.a && m.b) {
       const A = pl.proj(m.a);
@@ -196,6 +201,7 @@ function detectCourse({ pl, race, boatsFixes, approxMarks, options = {} }) {
       marks: marks0.map((m, k) => (m.gate ? outMark(m, k) : { ...pl.unproj(m), n: 0, approx: false, exact: true, drawn: approxMarks[k] })),
       marksXY: marks0,
       mid,
+      endMid,
       perBoat
     };
   }
@@ -218,13 +224,14 @@ function detectCourse({ pl, race, boatsFixes, approxMarks, options = {} }) {
     marks: finalMarks.map((m, k) => outMark(m, k, { n: m.n, approx: m.n === 0 })),
     marksXY: finalXY,
     mid,
+    endMid,
     perBoat: per
   };
 }
 
-/** Geometrie einer Runde: Linienmitte -> Bojen -> Linienmitte. */
-function courseGeometry(mid, marksXY, laps) {
-  const nodes = [mid, ...marksXY, mid];
+/** Geometrie einer Runde: Linienmitte -> Bojen -> Linienmitte (Langstrecke mit eigener Ziellinie: ... -> Mitte der Ziellinie). */
+function courseGeometry(mid, marksXY, laps, endMid = null) {
+  const nodes = [mid, ...marksXY, endMid || mid];
   const legLen = [];
   const cum = [0];
   for (let i = 1; i < nodes.length; i += 1) {
@@ -271,7 +278,7 @@ function liveRanking({ line, race, approxMarks, boats, now, options = {} }) {
   }
 
   const det = detectCourse({ pl, race, boatsFixes: boats.map((b) => b.fixes), approxMarks, options: o });
-  const geo = courseGeometry(det.mid, det.marksXY, race.laps);
+  const geo = courseGeometry(det.mid, det.marksXY, race.laps, det.endMid);
   out.marks = det.marks;
   out.lapLenM = geo.lapLen;
   out.totalM = geo.totalLen;
@@ -335,6 +342,40 @@ function liveRanking({ line, race, approxMarks, boats, now, options = {} }) {
   return out;
 }
 
+/**
+ * Langstrecke: Bojen der Reihe nach zwischen Start-Durchgang (startPassTs) und Ziel (endTs) pruefen. Gerundet/passiert zaehlt wie bei der Live-Rangliste
+ * (Rundung ab minTurnDeg Kursaenderung innerhalb radiusM, blosse Vorbeifahrt bis 0.6 x radiusM, Tor = Durchfahrt). Rueckgabe je Boje: { k, t (ms) | null, passOnly }.
+ * approxMarks sind die eingegebenen Bojen (exakt, nicht aus den Logs verfeinert).
+ */
+function checkMarks({ pl, fixes, approxMarks, startPassTs, endTs = null, options = {} }) {
+  const o = { ...DEFAULTS, ...options };
+  const toXYm = (m) => {
+    if (m.a && m.b) {
+      const A = pl.proj(m.a);
+      const B = pl.proj(m.b);
+      return { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, gate: { ax: A.x, ay: A.y, bx: B.x, by: B.y } };
+    }
+    return pl.proj(m);
+  };
+  const marksXY = approxMarks.map(toXYm);
+  const pts = toXY(pl, timing.normalizeFixes(fixes));
+  const mid = { x: pl.a.x + pl.dx / 2, y: pl.a.y + pl.dy / 2 };
+  // Jede Boje einzeln suchen: eine ausgelassene Boje soll die spaeteren nicht verdecken (die Reihenfolge wird danach geprueft)
+  const tTo = endTs == null ? Infinity : endTs;
+  const out = marksXY.map((m, k) => {
+    const prev = k === 0 ? mid : marksXY[k - 1];
+    const ev = detectRoundings(pts, [m], startPassTs, tTo, o.radiusM, o, prev)[0];
+    return { k, t: ev ? ev.t : null, passOnly: ev ? !!ev.passOnly : null };
+  });
+  let last = -Infinity;
+  out.forEach((r) => {
+    r.inOrder = r.t == null || r.t >= last;
+    if (r.t != null) last = Math.max(last, r.t);
+  });
+  return out;
+}
+
 module.exports = {
+  checkMarks,
   DEFAULTS, gateCrossing, detectRoundings, findApex, refineMarks, detectCourse, courseGeometry, progressMeters, liveRanking, analyzeBoatCourse
 };

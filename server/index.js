@@ -405,6 +405,12 @@ app.delete('/api/admin/courses/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Ziellinie der Langstrecke (eigene Linie, getrennt vom Start). { a, b, mark? } setzen oder { clear: true } = Ziel ueber die Start-Linie.
+app.put('/api/admin/finish-line', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  res.json({ finishLine: b.clear === true ? regatta.setFinishLine(null) : regatta.setFinishLine(b) });
+});
+
 // Kurs (grobe Bojen-Strecke) setzen oder loeschen (marks: null)
 app.put('/api/admin/course', requireAdmin, (req, res) => {
   res.json({ course: regatta.setCourse(req.body && req.body.marks, req.body && req.body.radiusM, req.body && req.body.exact) });

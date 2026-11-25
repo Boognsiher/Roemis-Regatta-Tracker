@@ -116,6 +116,10 @@
     if (lineDraft.a && lineDraft.b) {
       L.polyline([[lineDraft.a.lat, lineDraft.a.lon], [lineDraft.b.lat, lineDraft.b.lon]], { color: '#e6194b', weight: 4 }).addTo(layer);
     }
+    if (regatta && regatta.finishLine) {
+      const f = regatta.finishLine;
+      L.polyline([[f.a.lat, f.a.lon], [f.b.lat, f.b.lon]], { color: '#3cb44b', weight: 4 }).bindTooltip('Ziellinie', { permanent: true, direction: 'bottom' }).addTo(layer);
+    }
     courseDraft.marks.forEach((m, i) => {
       if (m.a) {
         L.polyline([[m.a.lat, m.a.lon], [m.b.lat, m.b.lon]], { color: '#f58231', weight: 4 }).addTo(layer);
@@ -405,11 +409,12 @@
       </div>`;
     const settings = r.official ? '' : `
       <div class="row">
-        <div class="field"><label>Runden</label><input type="number" class="rc-laps" min="1" max="10" value="${r.laps}" style="width:70px" /></div>
+        <div class="field"><label>Runden</label><input type="number" class="rc-laps" min="1" max="10" value="${r.laps}" style="width:70px" ${r.lapMode === 'distance' ? 'disabled' : ''} /></div>
         <div class="field"><label>Zielschluss (Min. nach Start)</label><input type="number" class="rc-cutoff" min="10" max="1440" value="${r.cutoffMinutes}" style="width:90px" /></div>
         <div class="field"><label>Linie pro Runde</label>
           <select class="rc-mode" style="width:auto"><option value="loop" ${r.lapMode === 'loop' ? 'selected' : ''}>immer gleiche Richtung (Rundkurs)</option>
-            <option value="bounce" ${r.lapMode === 'loop' ? '' : 'selected'}>hin und zurueck (gegenlaeufig)</option></select></div>
+            <option value="bounce" ${r.lapMode === 'bounce' ? 'selected' : ''}>hin und zurueck (gegenlaeufig)</option>
+            <option value="distance" ${r.lapMode === 'distance' ? 'selected' : ''}>Langstrecke: Start - Bojen - Ziel</option></select></div>
         <label style="margin:0"><input type="checkbox" class="rc-ext" ${r.startOnExtension === true ? 'checked' : ''} /> Erster Start darf in der Verlaengerung der Linie liegen</label>
         <button class="secondary rc-save">Speichern</button>
         <button class="secondary rc-geo" title="Setzt Linie und Kurs dieser Wettfahrt auf die aktuell gespeicherten Werte">Linie &amp; Kurs aktuell uebernehmen</button>
@@ -452,7 +457,7 @@
         <button class="ov-save">Speichern</button></div></td></tr>` : '';
     return `<tr>
       <td class="num"><b>${e.rank ?? ''}</b></td>
-      <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${warn}${note}</td>
+      <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? ' ✓' : ' ✗'}`).join(' · ')}</div>` : ''}${warn}${note}</td>
       <td>${esc(e.className)} / ${e.yardstick}</td>
       <td><span class="badge">${e.status}</span></td>
       <td class="num hint">${lapTxt}</td>
@@ -515,7 +520,7 @@
     await Promise.all(regatta.races.filter((r) => r.startTs != null).map(async (r) => {
       results[r.id] = await api(`/api/races/${r.id}/results`);
     }));
-    renderClasses(); renderBoats(); renderRaces(); renderCourseSelect();
+    renderClasses(); renderBoats(); renderRaces(); renderCourseSelect(); renderFinishPanel();
     await loadHistory();
     await loadDetectedMarks();
   }
@@ -568,6 +573,16 @@
     $('cs-mode').value = c.lapMode; $('cs-laps').value = c.laps; $('cs-minlap').value = c.minLapSeconds;
     $('cs-cutoff').value = c.cutoffMinutes; $('cs-ext').checked = !!c.startOnExtension;
   }
+  function renderFinishPanel() {
+    const c = activeCourse();
+    const isDist = !!c && c.lapMode === 'distance';
+    $('finish-panel').style.display = isDist ? 'block' : 'none';
+    $('cs-laps').disabled = isDist;
+    if (!isDist || document.activeElement.closest('#fl-a,#fl-b,#fl-mark')) return;
+    const f = regatta.finishLine;
+    const txt = (p) => (p ? `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}` : '');
+    $('fl-a').value = txt(f && f.a); $('fl-b').value = txt(f && f.b); $('fl-mark').value = txt(f && f.mark);
+  }
   function applyRaceDefaults() {
     const c = (regatta.courses || []).find((x) => x.id === $('race-course').value);
     if (!c) return;
@@ -581,7 +596,7 @@
     if (regatta.line) Object.assign(lineDraft, regatta.line);
     if (regatta.course) { courseDraft.marks = regatta.course.marks.slice(); courseDraft.radiusM = regatta.course.radiusM; courseDraft.exact = !!regatta.course.exact; }
     $('course-radius').value = courseDraft.radiusM;
-    renderCourseSelect(); $('race-course').value = regatta.activeCourseId; applyRaceDefaults();
+    renderCourseSelect(); renderFinishPanel(); $('race-course').value = regatta.activeCourseId; applyRaceDefaults();
     renderLineControls(); renderCourse(); drawLine();
   }
   async function courseAction(path, method, body, msg) {
@@ -594,6 +609,21 @@
   $('cs-copy').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { copyFrom: regatta.activeCourseId }, 'Kopie angelegt.')));
   $('cs-new-loop').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'loop' }, 'Neuer Rundkurs angelegt - Linie und Bojen eintragen.')));
   $('cs-new-bounce').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'bounce' }, 'Neuer Kurs angelegt - Linie und Bojen eintragen.')));
+  $('cs-new-distance').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'distance' }, 'Neue Langstrecke angelegt - Start-Linie, Bojen und (falls getrennt) Ziellinie eintragen.')));
+  $('fl-save').addEventListener('click', guard(async () => {
+    const a = Coords.parse($('fl-a').value); const b = Coords.parse($('fl-b').value);
+    const mk = $('fl-mark').value.trim() ? Coords.parse($('fl-mark').value) : null;
+    if (!a || !b) { $('fl-msg').textContent = 'Marke A und B als Koordinaten eingeben.'; return; }
+    if ($('fl-mark').value.trim() && !mk) { $('fl-msg').textContent = 'Referenz nicht lesbar.'; return; }
+    await api('/api/admin/finish-line', 'PUT', mk ? { a, b, mark: mk } : { a, b });
+    $('fl-msg').textContent = 'Ziellinie gespeichert. Gilt fuer neue Wettfahrten bzw. nach "Linie & Kurs aktuell uebernehmen".';
+    await load(); renderFinishPanel(); drawLine();
+  }));
+  $('fl-clear').addEventListener('click', guard(async () => {
+    await api('/api/admin/finish-line', 'PUT', { clear: true });
+    $('fl-msg').textContent = 'Ziellinie entfernt: Das Ziel liegt an der Start-Linie.';
+    await load(); renderFinishPanel(); drawLine();
+  }));
   $('cs-del').addEventListener('click', guard(async () => {
     const c = activeCourse();
     if (c && confirm(`Kurs "${c.name}" loeschen? Bereits angelegte Wettfahrten behalten ihre Kopie.`)) await courseAction(`/api/admin/courses/${c.id}`, 'DELETE', undefined, 'Kurs geloescht.');

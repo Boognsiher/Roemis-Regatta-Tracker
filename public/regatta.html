@@ -50,6 +50,7 @@
           <button id="cs-copy" class="secondary">Kopie davon</button>
           <button id="cs-new-loop" class="secondary">Neu: Rundkurs</button>
           <button id="cs-new-bounce" class="secondary">Neu: hin und zurueck</button>
+          <button id="cs-new-distance" class="secondary">Neu: Langstrecke</button>
           <button id="cs-del" class="danger">Kurs loeschen</button>
         </div>
         <div class="row">
@@ -58,6 +59,7 @@
             <select id="cs-mode" style="width:auto">
               <option value="loop">immer dieselbe Richtung (Rundkurs)</option>
               <option value="bounce">hin und zurueck (gegenlaeufig)</option>
+              <option value="distance">Langstrecke: Start - Bojen - Ziel</option>
             </select></div>
           <div class="field"><label for="cs-laps">Runden</label><input type="number" id="cs-laps" min="1" max="10" style="width:80px" /></div>
           <div class="field"><label for="cs-minlap">Min. Rundenzeit (s)</label><input type="number" id="cs-minlap" min="10" style="width:90px" /></div>
@@ -72,6 +74,19 @@
         <div id="line-map"></div>
         <div id="line-controls"></div>
         <div class="row"><button id="line-save">Linie speichern</button><span id="line-msg" class="hint"></span></div>
+
+        <div id="finish-panel" style="display:none">
+          <h3 style="margin-bottom:0.3rem">Ziellinie (Langstrecke)</h3>
+          <p class="hint">Bei einer Langstrecke zaehlt die Zeit vom Startsignal bis zum Ziel-Durchgang. Gib hier die Ziellinie (zwei Marken: Zielboot und Zielboje) ein, wenn das Ziel
+            <b>nicht</b> an der Start-Linie liegt. Ohne Ziellinie gilt das Ziel an der Start-Linie (das Boot kommt von der Kursseite zurueck durch dieselbe Linie). Die Kursseite der Ziellinie
+            (Seite, von der die Boote kommen) ist die <b>letzte Boje</b> des Kurses, ausser du gibst eine Referenz an. Die Bojen unten werden der Reihe nach geprueft; fehlende melden die Ergebnisse als Warnung.</p>
+          <div class="row">
+            <div class="field" style="flex:1;min-width:200px"><label for="fl-a">Ziellinie: Marke A</label><input type="text" id="fl-a" placeholder="46.8419, 10.5130" /></div>
+            <div class="field" style="flex:1;min-width:200px"><label for="fl-b">Marke B</label><input type="text" id="fl-b" placeholder="46.8421, 10.5140" /></div>
+            <div class="field" style="flex:1;min-width:200px"><label for="fl-mark">Referenz Kursseite (optional)</label><input type="text" id="fl-mark" placeholder="leer = letzte Boje" /></div>
+          </div>
+          <div class="row"><button id="fl-save" class="secondary">Ziellinie speichern</button><button id="fl-clear" class="secondary">Ziellinie entfernen (Ziel = Start-Linie)</button><span id="fl-msg" class="hint"></span></div>
+        </div>
 
         <h3 style="margin-bottom:0.3rem">Kurs (Bahnmarken) - fuer die Live-Rangliste</h3>
         <p class="hint">Gib die Bahnmarken einer Runde <b>in Fahrtreihenfolge</b> an (ohne Start/Ziel-Linie): per <b>Koordinaten</b>, per
@@ -126,6 +141,7 @@
             <select id="race-mode" style="width:auto">
               <option value="loop">immer in dieselbe Richtung (Richtung Boje 1) - Rundkurs</option>
               <option value="bounce">hin und zurueck (2x pro Runde, gegenlaeufig)</option>
+              <option value="distance">Langstrecke: Start - Bojen - Ziel (1 Wertung)</option>
             </select></div>
           <label style="margin:0 0.6rem 0 0"><input type="checkbox" id="race-ext" /> Erster Start darf in der Verlaengerung der Linie liegen</label>
           <button id="race-create">Wettfahrt anlegen</button>

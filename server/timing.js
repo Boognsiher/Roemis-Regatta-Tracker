@@ -210,12 +210,66 @@ function lapProgress({ lapMode, outside, laps, totalLaps, startTs, endTs, startC
 
 const START_EXTENSION_MAX_M = 400;   // so weit hinter den Marken darf der Start der 1. Runde in der Verlaengerung der Linie liegen
 
-function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null, lapMode = 'bounce', startOnExtension = false }) {
+/**
+ * Langstrecke (lapMode 'distance'): EINE Wertung von Start bis Ziel, keine Runden. Start = erster Durchgang von der Vorstartseite auf die Kursseite
+ * der Start-Linie (zwischen den Marken, oder in der Verlaengerung, wenn "Start in der Verlaengerung" gilt). Ziel = erster Durchgang durch die Ziellinie
+ * von der Kursseite auf die andere Seite (zwischen den Marken) nach dem Start. Hat der Kurs keine eigene Ziellinie (finishPl = null), ist es dieselbe
+ * Linie wie der Start: das Boot kehrt von der Kursseite zurueck durch die Linie. Die Bojen werden getrennt geprueft (course.checkMarks).
+ * Rueckgabe wie analyzeBoat; startPassTs = Zeitpunkt des Start-Durchgangs (fuer die Bojenpruefung).
+ */
+function analyzeDistance(pl, finishPl, fixes, { startTs, minLapSeconds, endTs, startOnExtension }) {
+  const warnings = [];
+  const outside = [];
+  const startExtensionM = startOnExtension ? START_EXTENSION_MAX_M : 0;
+  const inTime = (c) => endTs == null || c.ts <= endTs;
+  const startCrossings = findCrossings(pl, fixes, outside, { startExtensionM }).filter(inTime);
+  const atGun = positionAt(fixes, startTs);
+  const sideAtGun = atGun ? sideOf(pl, atGun) : -1;
+  let returned = sideAtGun > 0 ? false : true;
+  if (sideAtGun > 0) warnings.push('Beim Startsignal auf der Kursseite (OCS?) - bitte pruefen');
+  let startPass = null;
+  for (const c of startCrossings) {
+    if (c.ts < startTs) continue;
+    if (!returned) { if (c.dir === 'finish') returned = true; continue; }
+    if (c.dir === 'start') { startPass = c; break; }
+  }
+  const lapInfo = { current: 1, completed: 0, extensionPasses: 0, missingPasses: 0, uncertain: false };
+  if (!startPass) {
+    const out = outside.filter((o) => o.ts >= startTs && o.dir === 'start' && inTime(o));
+    if (out.length) warnings.push(`${out.length} Start-Durchgang/Durchgaenge ausserhalb der Start-Marken (nur ${Math.round(Math.min(...out.map((o) => o.meters)))} m daneben) - zaehlt nicht`);
+    return { status: 'DNS', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: warnings.concat('Kein Start-Durchgang erkannt'), lapInfo, startPassTs: null };
+  }
+  const outsideF = [];
+  const finCrossings = (finishPl ? findCrossings(finishPl, fixes, outsideF, {}) : startCrossings.map((c) => c))
+    .filter((c) => c.dir === 'finish' && c.ts > startPass.ts && (c.ts - startPass.ts) / 1000 >= minLapSeconds && inTime(c));
+  const fin = finCrossings[0] || null;
+  if (!fin) {
+    const out = (finishPl ? outsideF : outside).filter((o) => o.dir === 'finish' && o.ts > startPass.ts && inTime(o));
+    const extra = ['Kein Ziel-Durchgang erkannt'];
+    if (out.length) extra.push(`${out.length} Durchgang/Durchgaenge ausserhalb der ${finishPl ? 'Ziel' : 'Start/Ziel'}-Marken (nur ${Math.round(Math.min(...out.map((o) => o.meters)))} m daneben) - Linie zu kurz oder Boot ausserhalb der Marken?`);
+    return { status: 'DNF', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: warnings.concat(extra), lapInfo, startPassTs: startPass.ts };
+  }
+  if (fin.uncertaintyMs > 10000) warnings.push(`Zieldurchgang unsicher: Luecke von ${(fin.uncertaintyMs / 1000).toFixed(0)}s zwischen den GPS-Fixes`);
+  return {
+    status: 'FIN',
+    laps: [{ n: 1, ts: fin.ts, lapSeconds: (fin.ts - startTs) / 1000, uncertaintyMs: fin.uncertaintyMs }],
+    finishTs: fin.ts,
+    elapsedSec: (fin.ts - startTs) / 1000,
+    uncertaintyMs: fin.uncertaintyMs,
+    warnings,
+    lapInfo: { ...lapInfo, completed: 1 },
+    startPassTs: startPass.ts
+  };
+}
+
+function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, endTs = null, lapMode = 'bounce', startOnExtension = false, finishPl = null }) {
   const warnings = [];
   const fixes = normalizeFixes(fixesRaw);
   if (!fixes.length || fixes[fixes.length - 1].ts < startTs) {
     return { status: 'DNS', laps: [], finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: ['Keine GPS-Daten ab dem Start'], lapInfo: { current: 1, completed: 0, extensionPasses: 0, missingPasses: 0, uncertain: false } };
   }
+
+  if (lapMode === 'distance') return analyzeDistance(pl, finishPl, fixes, { startTs, minLapSeconds, endTs, startOnExtension });
 
   // Zielschluss: Durchgaenge nach endTs zaehlen nicht (z.B. wenn danach die naechste Wettfahrt gesegelt wurde)
   const outside = [];
