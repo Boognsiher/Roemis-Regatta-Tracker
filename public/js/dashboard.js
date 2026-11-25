@@ -181,6 +181,8 @@
     const onlineCount = items.filter(({ data: t }) => t.online).length;
     const withFix = items.filter(({ data: t }) => t.online && !t.noFix && !t.stale).length;
     const summary = `<div class="hint" style="margin-bottom:0.5rem"><b>${onlineCount} von ${total}</b> Trackern online · ${withFix} mit GPS-Fix</div>`;
+    const sumEl = document.getElementById('sidebar-summary');
+    if (sumEl) sumEl.textContent = `${onlineCount} von ${total} Trackern online`;
     boatListEl.innerHTML = summary + items.map(({ data: t }) => `
       <div class="boat-card ${t.stale ? 'stale' : ''}" data-id="${t.id}">
         <div class="boat-dot" style="background:${t.color}"></div>
@@ -268,6 +270,19 @@
       }
       ws.close();
     };
+  }
+
+  // Handy: Bootliste ein-/ausklappen (die Karte soll den Bildschirm fuellen); nach der Groessenaenderung die Karte neu vermessen
+  const sidebarEl = document.getElementById('sidebar');
+  const toggleEl = document.getElementById('sidebar-toggle');
+  if (sidebarEl && toggleEl) {
+    toggleEl.addEventListener('click', () => {
+      const collapsed = sidebarEl.classList.toggle('collapsed');
+      toggleEl.setAttribute('aria-expanded', String(!collapsed));
+      document.getElementById('sidebar-arrow').innerHTML = collapsed ? '&#9650;' : '&#9660;';
+      setTimeout(() => map.invalidateSize(), 250);
+    });
+    window.addEventListener('resize', () => map.invalidateSize());
   }
 
   // Altersanzeige der Boote periodisch auffrischen, ohne auf neue Daten zu warten.
