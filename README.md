@@ -62,6 +62,23 @@ Bootliste laedt der Browser die Strecke aus der vollstaendigen Aufzeichnung: "le
 oder "alles", auf hoechstens 3000 Punkte ausgeduennt (`GET /api/trackers/<id>/track?mode=segment|hours|all&max=3000`). Neue Live-Punkte werden angehaengt.
 Die Aufzeichnung selbst ist immer vollstaendig; fuer den Dauerbetrieb mit vielen Zuschauern ist die Funktion noch nicht ausgelegt (Abfrage liest die ganze Historie).
 
+**Langstrecke (Start - Bojen - Ziel):** Neben Rundkurs (`loop`) und hin und zurueck (`bounce`) gibt es den Zaehlmodus `distance` fuer Langstrecken-Regatten, ohne Runden.
+In `/regatta.html`, Bereich 3: "Neu: Langstrecke". Es zaehlt EINE Zeit vom Startsignal bis zum Ziel-Durchgang (dann wie sonst nach Yardstick umgerechnet).
+- **Start:** erster Durchgang durch die Start-Linie von der Vorstartseite auf die Kursseite (zwischen den Marken; auf Wunsch der erste Start auch in der Verlaengerung).
+- **Ziel:** entweder eine **eigene Ziellinie** (Zielboot und Zielboje, getrennt vom Start) oder, ohne Eintrag, dieselbe Linie wie der Start (das Boot kommt von der
+  Kursseite zurueck). Die Kursseite der Ziellinie ist die Seite der **letzten Boje**, falls keine Referenz eingegeben wird. Ziel-Durchgaenge neben den Marken zaehlen nicht (Warnung).
+- **Bojen** (1 bis 20, auch Tore) werden jede einzeln geprueft: gerundet (Kursaenderung ab 25 Grad innerhalb des Suchradius) oder knapp passiert (bis 0,6 x Radius).
+  Eine fehlende Boje oder eine falsche Reihenfolge erscheint als Warnung bei der Wertung, ohne diese zu aendern: die Wettfahrtleitung entscheidet (Strafe/DSQ per Korrektur).
+  In den Ergebnissen steht je Boot "Bojen: 1 ✓ 2 ✗". Die Bojen sind exakt einzugeben (Haken "Positionen sind exakt"), der Suchradius gilt fuer jede Boje.
+- Die Live-Rangliste rechnet die Strecke von der Mitte der Start-Linie ueber die Bojen bis zur Mitte der Ziellinie.
+- Nicht geprueft auf echten Daten; getestet mit simulierten Fahrten (`test/distance.test.js`). Der Zeitverlauf (GPS-Zeit) und die Linienlogik sind wie bei den anderen Modi.
+
+**Logs importieren** (`/regatta.html`, Bereich 6): Getrackte Logs nachtraeglich in die Aufzeichnung einfuegen. Erkannt werden das Flash-Log eines Trackers
+(CSV aus dem Befehl `d`), der Server-Export (`positionen-*.csv`), die Segeluhr-Logs (`trackerlog_*.csv`, `diagnose_*.csv`) und GPX. Der Browser liest die
+Datei ein, zeigt je erkannter Strecke Punkte und Zeitraum, und du ordnest sie einem Tracker zu (Vorauswahl ueber die LoRa-Nr oder den Namen). Importiert
+wird in Stuecken zu 2000 Punkten ueber `POST /api/admin/import` (nur Admin). Zeitstempel, die schon in der Historie stehen, werden uebersprungen; Zeilen ohne
+Position (Lebenszeichen ohne Fix) ebenso. Die Live-Position wird nur ersetzt, wenn ein importierter Punkt neuer ist.
+
 ## Zeitmessung und Yardstick-Auswertung
 
 Seiten: **Wettfahrtleitung** `/regatta.html` (Admin-Login wie `/admin.html`), oeffentliche Ergebnisse `/results.html`.

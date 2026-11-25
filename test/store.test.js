@@ -119,3 +119,27 @@ test('getTrack: letzte Fahrt (Pause > 30 min), Stunden-Fenster, alles, Ausduennu
   assert.strictEqual(store.getTrack('gibtsnicht', {}), null);
   assert.strictEqual(store.getTrack(store.createTracker('Leer').id, {}).total, 0);
 });
+
+test('importPositions: schreibt in die Historie, ueberspringt Duplikate und ungueltige Punkte, ersetzt Live-Position nur wenn neuer', () => {
+  const t = store.createTracker('Import');
+  const base = Date.now() - 3 * 3600e3;
+  store.recordPosition(t.id, { lat: 47, lon: 10, ts: Date.now() - 1000 });          // aktuelle Live-Position
+  const list = [];
+  for (let i = 0; i < 50; i += 1) list.push({ ts: base + i * 1000, lat: 47.2 + i * 1e-5, lon: 8.7, speed: 3, heading: 90, battery: 0.8, accuracy: 4 });
+  list.push({ ts: base, lat: 47.2, lon: 8.7 });                                         // Duplikat
+  list.push({ ts: base + 99999, lat: 99, lon: 8.7 });                                   // ungueltige Breite
+  list.push({ ts: 5, lat: 47, lon: 8 });                                                // Zeit vor 2020
+  list.push({ ts: Date.now() + 3600e3, lat: 47, lon: 8 });                              // Zukunft
+  const r = store.importPositions(t.id, list);
+  assert.strictEqual(r.imported, 50);
+  assert.strictEqual(r.duplicates, 1);
+  assert.strictEqual(r.invalid, 3);
+  assert.strictEqual(store.readHistoryCached(t.id).length, 51);                         // 1 Live + 50 importiert
+  assert.strictEqual(store.getPublicTracker(t.id).latest.lat, 47);                      // Live-Position bleibt (importierte sind aelter)
+  const again = store.importPositions(t.id, list.slice(0, 50));                         // zweiter Import: alles Duplikate
+  assert.strictEqual(again.imported, 0);
+  assert.strictEqual(again.duplicates, 50);
+  assert.strictEqual(store.importPositions('gibtsnicht', list), null);
+  const track = store.getTrack(t.id, { mode: 'all' });
+  assert.strictEqual(track.total, 51);
+});

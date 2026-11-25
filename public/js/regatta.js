@@ -116,6 +116,10 @@
     if (lineDraft.a && lineDraft.b) {
       L.polyline([[lineDraft.a.lat, lineDraft.a.lon], [lineDraft.b.lat, lineDraft.b.lon]], { color: '#e6194b', weight: 4 }).addTo(layer);
     }
+    if (regatta && regatta.finishLine) {
+      const f = regatta.finishLine;
+      L.polyline([[f.a.lat, f.a.lon], [f.b.lat, f.b.lon]], { color: '#3cb44b', weight: 4 }).bindTooltip('Ziellinie', { permanent: true, direction: 'bottom' }).addTo(layer);
+    }
     courseDraft.marks.forEach((m, i) => {
       if (m.a) {
         L.polyline([[m.a.lat, m.a.lon], [m.b.lat, m.b.lon]], { color: '#f58231', weight: 4 }).addTo(layer);
@@ -405,11 +409,12 @@
       </div>`;
     const settings = r.official ? '' : `
       <div class="row">
-        <div class="field"><label>Runden</label><input type="number" class="rc-laps" min="1" max="10" value="${r.laps}" style="width:70px" /></div>
+        <div class="field"><label>Runden</label><input type="number" class="rc-laps" min="1" max="10" value="${r.laps}" style="width:70px" ${r.lapMode === 'distance' ? 'disabled' : ''} /></div>
         <div class="field"><label>Zielschluss (Min. nach Start)</label><input type="number" class="rc-cutoff" min="10" max="1440" value="${r.cutoffMinutes}" style="width:90px" /></div>
         <div class="field"><label>Linie pro Runde</label>
           <select class="rc-mode" style="width:auto"><option value="loop" ${r.lapMode === 'loop' ? 'selected' : ''}>immer gleiche Richtung (Rundkurs)</option>
-            <option value="bounce" ${r.lapMode === 'loop' ? '' : 'selected'}>hin und zurueck (gegenlaeufig)</option></select></div>
+            <option value="bounce" ${r.lapMode === 'bounce' ? 'selected' : ''}>hin und zurueck (gegenlaeufig)</option>
+            <option value="distance" ${r.lapMode === 'distance' ? 'selected' : ''}>Langstrecke: Start - Bojen - Ziel</option></select></div>
         <label style="margin:0"><input type="checkbox" class="rc-ext" ${r.startOnExtension === true ? 'checked' : ''} /> Erster Start darf in der Verlaengerung der Linie liegen</label>
         <button class="secondary rc-save">Speichern</button>
         <button class="secondary rc-geo" title="Setzt Linie und Kurs dieser Wettfahrt auf die aktuell gespeicherten Werte">Linie &amp; Kurs aktuell uebernehmen</button>
@@ -452,7 +457,7 @@
         <button class="ov-save">Speichern</button></div></td></tr>` : '';
     return `<tr>
       <td class="num"><b>${e.rank ?? ''}</b></td>
-      <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${warn}${note}</td>
+      <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? ' ✓' : ' ✗'}`).join(' · ')}</div>` : ''}${warn}${note}</td>
       <td>${esc(e.className)} / ${e.yardstick}</td>
       <td><span class="badge">${e.status}</span></td>
       <td class="num hint">${lapTxt}</td>
@@ -515,7 +520,7 @@
     await Promise.all(regatta.races.filter((r) => r.startTs != null).map(async (r) => {
       results[r.id] = await api(`/api/races/${r.id}/results`);
     }));
-    renderClasses(); renderBoats(); renderRaces(); renderCourseSelect();
+    renderClasses(); renderBoats(); renderRaces(); renderCourseSelect(); renderFinishPanel();
     await loadHistory();
     await loadDetectedMarks();
   }
@@ -568,6 +573,16 @@
     $('cs-mode').value = c.lapMode; $('cs-laps').value = c.laps; $('cs-minlap').value = c.minLapSeconds;
     $('cs-cutoff').value = c.cutoffMinutes; $('cs-ext').checked = !!c.startOnExtension;
   }
+  function renderFinishPanel() {
+    const c = activeCourse();
+    const isDist = !!c && c.lapMode === 'distance';
+    $('finish-panel').style.display = isDist ? 'block' : 'none';
+    $('cs-laps').disabled = isDist;
+    if (!isDist || document.activeElement.closest('#fl-a,#fl-b,#fl-mark')) return;
+    const f = regatta.finishLine;
+    const txt = (p) => (p ? `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}` : '');
+    $('fl-a').value = txt(f && f.a); $('fl-b').value = txt(f && f.b); $('fl-mark').value = txt(f && f.mark);
+  }
   function applyRaceDefaults() {
     const c = (regatta.courses || []).find((x) => x.id === $('race-course').value);
     if (!c) return;
@@ -581,7 +596,7 @@
     if (regatta.line) Object.assign(lineDraft, regatta.line);
     if (regatta.course) { courseDraft.marks = regatta.course.marks.slice(); courseDraft.radiusM = regatta.course.radiusM; courseDraft.exact = !!regatta.course.exact; }
     $('course-radius').value = courseDraft.radiusM;
-    renderCourseSelect(); $('race-course').value = regatta.activeCourseId; applyRaceDefaults();
+    renderCourseSelect(); renderFinishPanel(); $('race-course').value = regatta.activeCourseId; applyRaceDefaults();
     renderLineControls(); renderCourse(); drawLine();
   }
   async function courseAction(path, method, body, msg) {
@@ -594,6 +609,21 @@
   $('cs-copy').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { copyFrom: regatta.activeCourseId }, 'Kopie angelegt.')));
   $('cs-new-loop').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'loop' }, 'Neuer Rundkurs angelegt - Linie und Bojen eintragen.')));
   $('cs-new-bounce').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'bounce' }, 'Neuer Kurs angelegt - Linie und Bojen eintragen.')));
+  $('cs-new-distance').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'distance' }, 'Neue Langstrecke angelegt - Start-Linie, Bojen und (falls getrennt) Ziellinie eintragen.')));
+  $('fl-save').addEventListener('click', guard(async () => {
+    const a = Coords.parse($('fl-a').value); const b = Coords.parse($('fl-b').value);
+    const mk = $('fl-mark').value.trim() ? Coords.parse($('fl-mark').value) : null;
+    if (!a || !b) { $('fl-msg').textContent = 'Marke A und B als Koordinaten eingeben.'; return; }
+    if ($('fl-mark').value.trim() && !mk) { $('fl-msg').textContent = 'Referenz nicht lesbar.'; return; }
+    await api('/api/admin/finish-line', 'PUT', mk ? { a, b, mark: mk } : { a, b });
+    $('fl-msg').textContent = 'Ziellinie gespeichert. Gilt fuer neue Wettfahrten bzw. nach "Linie & Kurs aktuell uebernehmen".';
+    await load(); renderFinishPanel(); drawLine();
+  }));
+  $('fl-clear').addEventListener('click', guard(async () => {
+    await api('/api/admin/finish-line', 'PUT', { clear: true });
+    $('fl-msg').textContent = 'Ziellinie entfernt: Das Ziel liegt an der Start-Linie.';
+    await load(); renderFinishPanel(); drawLine();
+  }));
   $('cs-del').addEventListener('click', guard(async () => {
     const c = activeCourse();
     if (c && confirm(`Kurs "${c.name}" loeschen? Bereits angelegte Wettfahrten behalten ihre Kopie.`)) await courseAction(`/api/admin/courses/${c.id}`, 'DELETE', undefined, 'Kurs geloescht.');
@@ -602,6 +632,68 @@
     name: $('cs-name').value, description: $('cs-desc').value, lapMode: $('cs-mode').value, laps: $('cs-laps').value,
     minLapSeconds: $('cs-minlap').value, cutoffMinutes: $('cs-cutoff').value, startOnExtension: $('cs-ext').checked
   }, 'Regeln gespeichert.')));
+
+  // ---------- Logs importieren ----------
+  const impGroups = [];   // { file, format, g, targetSel }
+  const fmtLocal = (ts) => new Date(ts).toLocaleString('de-CH', { hour12: false });
+
+  async function renderImportList() {
+    const list = $('imp-list');
+    if (!impGroups.length) { list.innerHTML = ''; $('imp-run').style.display = 'none'; return; }
+    const adminTrackers = (await api('/api/admin/trackers')).trackers || [];
+    const opts = '<option value="">nicht importieren</option>' + adminTrackers.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}${t.loraId ? ` (LoRa-Nr ${t.loraId})` : ''}</option>`).join('');
+    list.innerHTML = `<table class="results"><thead><tr><th>Datei</th><th>Strecke</th><th>Punkte</th><th>Zeitraum</th><th>Importieren als</th></tr></thead><tbody>${
+      impGroups.map((x, i) => `<tr><td>${esc(x.file)}<div class="hint">${esc(x.format)}</div></td><td>${esc(x.g.label)}</td><td class="num">${x.g.points.length}</td>
+        <td class="num">${fmtLocal(x.g.points[0].ts)}<br>bis ${fmtLocal(x.g.points[x.g.points.length - 1].ts)}</td>
+        <td><select data-i="${i}" class="imp-target" style="width:auto">${opts}</select></td></tr>`).join('')}</tbody></table>`;
+    list.querySelectorAll('.imp-target').forEach((sel) => {
+      const x = impGroups[Number(sel.dataset.i)];
+      // Vorauswahl: gleiche LoRa-Nr, sonst gleicher Name
+      const byLora = x.g.loraId ? adminTrackers.find((t) => t.loraId === x.g.loraId) : null;
+      const byName = x.g.boatName ? adminTrackers.find((t) => t.name.toLowerCase() === x.g.boatName.toLowerCase()) : null;
+      const pre = byLora || byName;
+      if (pre) sel.value = pre.id;
+    });
+    $('imp-run').style.display = 'inline-block';
+  }
+
+  $('imp-files').addEventListener('change', guard(async (e) => {
+    impGroups.length = 0;
+    const notes = [];
+    for (const file of e.target.files) {
+      const r = ImportLog.parse(await file.text(), file.name);
+      if (!r.format) { notes.push(`${file.name}: ${r.notes[0]}`); continue; }
+      r.notes.forEach((n) => notes.push(`${file.name}: ${n}`));
+      if (r.skipped) notes.push(`${file.name}: ${r.skipped} Zeile(n) ohne gueltige Position uebersprungen (z.B. Lebenszeichen ohne Fix).`);
+      r.groups.forEach((g) => impGroups.push({ file: file.name, format: r.format, g }));
+    }
+    $('imp-msg').textContent = notes.join(' ');
+    await renderImportList();
+  }));
+
+  $('imp-run').addEventListener('click', guard(async () => {
+    const jobs = [...document.querySelectorAll('.imp-target')].map((sel) => ({ x: impGroups[Number(sel.dataset.i)], id: sel.value })).filter((j) => j.id);
+    if (!jobs.length) { $('imp-msg').textContent = 'Bitte mindestens einer Strecke einen Tracker zuordnen.'; return; }
+    $('imp-run').disabled = true;
+    const lines = [];
+    try {
+      for (const { x, id } of jobs) {
+        const pts = x.g.points;
+        const sum = { imported: 0, duplicates: 0, invalid: 0 };
+        for (let i = 0; i < pts.length; i += 2000) {
+          $('imp-msg').textContent = `Importiere ${x.g.label} ... ${Math.min(i + 2000, pts.length)} / ${pts.length}`;
+          const r = await api('/api/admin/import', 'POST', { trackerId: id, positions: pts.slice(i, i + 2000) });
+          sum.imported += r.imported; sum.duplicates += r.duplicates; sum.invalid += r.invalid;
+        }
+        const name = ((await api('/api/admin/trackers')).trackers.find((t) => t.id === id) || {}).name || id;
+        lines.push(`${x.g.label} -> ${name}: ${sum.imported} importiert, ${sum.duplicates} schon vorhanden, ${sum.invalid} ungueltig`);
+      }
+    } finally {
+      $('imp-run').disabled = false;
+    }
+    $('imp-msg').textContent = lines.join(' | ');
+    await loadHistory();
+  }));
 
   let firstLoad = true;
   load().then(() => { loadDrafts(); firstLoad = false; }).catch((e) => alert(e.message));
