@@ -81,9 +81,9 @@
             <b>nicht</b> an der Start-Linie liegt. Ohne Ziellinie gilt das Ziel an der Start-Linie (das Boot kommt von der Kursseite zurueck durch dieselbe Linie). Die Kursseite der Ziellinie
             (Seite, von der die Boote kommen) ist die <b>letzte Boje</b> des Kurses, ausser du gibst eine Referenz an. Die Bojen unten werden der Reihe nach geprueft; fehlende melden die Ergebnisse als Warnung.</p>
           <div class="row">
-            <div class="field" style="flex:1;min-width:200px"><label for="fl-a">Ziellinie: Marke A</label><input type="text" id="fl-a" placeholder="46.8419, 10.5130" /></div>
-            <div class="field" style="flex:1;min-width:200px"><label for="fl-b">Marke B</label><input type="text" id="fl-b" placeholder="46.8421, 10.5140" /></div>
-            <div class="field" style="flex:1;min-width:200px"><label for="fl-mark">Referenz Kursseite (optional)</label><input type="text" id="fl-mark" placeholder="leer = letzte Boje" /></div>
+            <div class="field" style="flex:1;min-width:200px"><label for="fl-a">Ziellinie: Marke A</label><input type="text" id="fl-a" placeholder="46.8419, 10.5130" /><button type="button" class="secondary fl-pick" data-k="fl-a">A auf Karte klicken</button></div>
+            <div class="field" style="flex:1;min-width:200px"><label for="fl-b">Marke B</label><input type="text" id="fl-b" placeholder="46.8421, 10.5140" /><button type="button" class="secondary fl-pick" data-k="fl-b">B auf Karte klicken</button></div>
+            <div class="field" style="flex:1;min-width:200px"><label for="fl-mark">Referenz Kursseite (optional)</label><input type="text" id="fl-mark" placeholder="leer = letzte Boje" /><button type="button" class="secondary fl-pick" data-k="fl-mark">Referenz auf Karte klicken</button></div>
           </div>
           <div class="row"><button id="fl-save" class="secondary">Ziellinie speichern</button><button id="fl-clear" class="secondary">Ziellinie entfernen (Ziel = Start-Linie)</button><span id="fl-msg" class="hint"></span></div>
         </div>
@@ -104,8 +104,8 @@
           <button id="course-add" class="secondary">Boje auf Karte setzen</button>
         </div>
         <div class="row">
-          <div class="field" style="flex:1;min-width:200px"><label for="gate-a">Tor (zwei Marken, Durchfahrt zaehlt): Marke A</label><input type="text" id="gate-a" placeholder="46.8419, 10.5130" /></div>
-          <div class="field" style="flex:1;min-width:200px"><label for="gate-b">Marke B</label><input type="text" id="gate-b" placeholder="46.8421, 10.5140" /></div>
+          <div class="field" style="flex:1;min-width:200px"><label for="gate-a">Tor (zwei Marken, Durchfahrt zaehlt): Marke A</label><input type="text" id="gate-a" placeholder="46.8419, 10.5130" /><button type="button" class="secondary gate-pick" data-k="gate-a">A auf Karte klicken</button></div>
+          <div class="field" style="flex:1;min-width:200px"><label for="gate-b">Marke B</label><input type="text" id="gate-b" placeholder="46.8421, 10.5140" /><button type="button" class="secondary gate-pick" data-k="gate-b">B auf Karte klicken</button></div>
           <button id="gate-add" class="secondary">Tor hinzufuegen</button>
         </div>
         <details style="margin-bottom:0.6rem"><summary class="hint" style="cursor:pointer">Mehrere Koordinaten auf einmal einfuegen</summary>

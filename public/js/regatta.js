@@ -67,12 +67,14 @@
   }));
 
   // ---------- Boote ----------
+  // Noch nicht gespeicherte Eingaben je Tracker: bleiben beim Auto-Refresh und bei jedem Neuaufbau der Liste erhalten.
+  const boatDraft = {};
   function renderBoats() {
     if (!trackers.length) { $('boats').innerHTML = '<p class="hint">Noch keine Tracker angelegt.</p>'; return; }
     const opts = (sel) => '<option value="">–</option>' + regatta.classes
       .map((c) => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.name)} (${c.yardstick})</option>`).join('');
     $('boats').innerHTML = trackers.map((t) => {
-      const b = regatta.boats[t.id] || {};
+      const b = { ...(regatta.boats[t.id] || {}), ...(boatDraft[t.id] || {}) };
       return `<div class="row" data-id="${t.id}">
         <div style="min-width:130px;font-weight:600"><span class="boat-dot" style="display:inline-block;width:10px;height:10px;background:${t.color};margin-right:6px"></span>${esc(t.name)}</div>
         <div class="field"><label>Segelnr.</label><input type="text" class="sail" value="${esc(b.sailNo)}" style="width:90px" /></div>
@@ -84,14 +86,17 @@
     }).join('');
     $('boats').querySelectorAll('.row').forEach((row) => {
       const id = row.dataset.id;
+      const remember = () => { boatDraft[id] = { sailNo: row.querySelector('.sail').value, helm: row.querySelector('.helm').value, classId: row.querySelector('.cls').value }; };
+      row.querySelectorAll('input,select').forEach((el) => { el.addEventListener('input', remember); el.addEventListener('change', remember); });
       row.querySelector('.save').addEventListener('click', guard(async () => {
         await api(`/api/admin/trackers/${id}/registration`, 'PUT', {
           sailNo: row.querySelector('.sail').value, helm: row.querySelector('.helm').value, classId: row.querySelector('.cls').value
         });
+        delete boatDraft[id];
         await load();
       }));
       const un = row.querySelector('.unreg');
-      if (un) un.addEventListener('click', guard(async () => { await api(`/api/admin/trackers/${id}/registration`, 'DELETE'); await load(); }));
+      if (un) un.addEventListener('click', guard(async () => { await api(`/api/admin/trackers/${id}/registration`, 'DELETE'); delete boatDraft[id]; await load(); }));
     });
   }
 
@@ -106,6 +111,9 @@
     layer.addTo(map);
   }
   let picking = null;
+  /** Beim Start eines Karten-Klick-Modus zur Karte scrollen, damit man direkt klicken kann. */
+  function focusMap() { const el = document.getElementById('line-map'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  let flDirty = false;   // Ziellinien-Felder wurden geaendert und noch nicht gespeichert (kein Ueberschreiben durch den Auto-Refresh)
   const LABEL = { a: 'Linie A (Startschiff)', b: 'Linie B (Pin)', mark: 'Referenz-Tonne (Kursseite)' };
 
   function drawLine() {
@@ -116,9 +124,13 @@
     if (lineDraft.a && lineDraft.b) {
       L.polyline([[lineDraft.a.lat, lineDraft.a.lon], [lineDraft.b.lat, lineDraft.b.lon]], { color: '#e6194b', weight: 4 }).addTo(layer);
     }
-    if (regatta && regatta.finishLine) {
-      const f = regatta.finishLine;
-      L.polyline([[f.a.lat, f.a.lon], [f.b.lat, f.b.lon]], { color: '#3cb44b', weight: 4 }).bindTooltip('Ziellinie', { permanent: true, direction: 'bottom' }).addTo(layer);
+    // Ziellinie: Entwurf aus den Eingabefeldern (solange nicht gespeichert), sonst die gespeicherte
+    const fa = Coords.parse($('fl-a').value || ''); const fb = Coords.parse($('fl-b').value || ''); const fm = Coords.parse($('fl-mark').value || '');
+    const f = flDirty ? { a: fa, b: fb, mark: fm } : (regatta && regatta.finishLine);
+    if (f) {
+      if (f.a && f.b) L.polyline([[f.a.lat, f.a.lon], [f.b.lat, f.b.lon]], { color: '#3cb44b', weight: 4 }).bindTooltip('Ziellinie', { permanent: true, direction: 'bottom' }).addTo(layer);
+      else [f.a, f.b].filter(Boolean).forEach((q) => L.circleMarker([q.lat, q.lon], { radius: 7, color: '#3cb44b', fillOpacity: 0.8 }).addTo(layer));
+      if (f.mark) L.circleMarker([f.mark.lat, f.mark.lon], { radius: 6, color: '#3cb44b', fillOpacity: 0.3 }).bindTooltip('Referenz Kursseite', { direction: 'top' }).addTo(layer);
     }
     courseDraft.marks.forEach((m, i) => {
       if (m.a) {
@@ -129,6 +141,10 @@
         L.circleMarker([m.lat, m.lon], { radius: 9, color: '#f58231', fillOpacity: 0.7 }).bindTooltip(`Boje ${i + 1}${m.rounding === 'port' ? ' (Backbord)' : m.rounding === 'starboard' ? ' (Steuerbord)' : ''}${courseDraft.exact ? '' : ' (grob)'}`, { permanent: true, direction: 'top' }).addTo(layer);
       }
     });
+    // Entwurf eines Tors (Eingabefelder, noch nicht hinzugefuegt)
+    const ga = Coords.parse($('gate-a').value || ''); const gb = Coords.parse($('gate-b').value || '');
+    [ga, gb].filter(Boolean).forEach((q) => L.circleMarker([q.lat, q.lon], { radius: 7, color: '#f58231', dashArray: '3 3', fillOpacity: 0.2 }).addTo(layer));
+    if (ga && gb) L.polyline([[ga.lat, ga.lon], [gb.lat, gb.lon]], { color: '#f58231', weight: 3, dashArray: '6 6' }).bindTooltip('Tor (Entwurf)', { direction: 'top' }).addTo(layer);
     const centers = courseDraft.marks.map((m) => (m.a ? { lat: (m.a.lat + m.b.lat) / 2, lon: (m.a.lon + m.b.lon) / 2 } : m));
     if (centers.length > 1) {
       L.polyline(centers.map((m) => [m.lat, m.lon]), { color: '#f58231', weight: 2, dashArray: '6 6' }).addTo(layer);
@@ -163,7 +179,7 @@
         input.value = Coords.format(c);
         drawLine();
       });
-      row.querySelector('.pick').addEventListener('click', () => { picking = k; $('line-msg').textContent = `Klick auf die Karte setzt: ${LABEL[k]}`; });
+      row.querySelector('.pick').addEventListener('click', () => { picking = k; $('line-msg').textContent = `Klick auf die Karte setzt: ${LABEL[k]}`; focusMap(); });
       row.querySelector('.from-tracker').addEventListener('change', (e) => {
         const t = trackers.find((x) => x.id === e.target.value);
         if (t && t.latest) { lineDraft[k] = { lat: t.latest.lat, lon: t.latest.lon }; renderLineControls(); drawLine(); }
@@ -174,6 +190,21 @@
     if (picking === 'course') {
       courseDraft.marks.push({ lat: e.latlng.lat, lon: e.latlng.lng });
       renderCourse(); drawLine();   // Modus bleibt aktiv: weitere Boje setzen, "Boje auf Karte setzen" nochmals klicken beendet ihn
+      return;
+    }
+    if (picking && picking.startsWith('gate-')) {               // Tor als Bahnmarke: Marke A oder B per Klick
+      $(picking).value = `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
+      const next = picking === 'gate-a' ? 'gate-b' : null;     // nach A gleich B anbieten
+      picking = next;
+      $('course-msg').textContent = next ? 'A gesetzt - jetzt Marke B auf die Karte klicken.' : 'Beide Marken gesetzt - "Tor hinzufuegen" druecken.';
+      drawLine();
+      return;
+    }
+    if (picking && picking.startsWith('fl-')) {                 // Ziellinie (Langstrecke): Marke A, B oder Referenz per Klick
+      $(picking).value = `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
+      picking = null; flDirty = true;
+      $('fl-msg').textContent = 'Gesetzt. Noch "Ziellinie speichern" druecken.';
+      drawLine();
       return;
     }
     if (!picking) return;
@@ -249,6 +280,12 @@
     const found = detectedMarks.filter((m) => !m.approx && !m.exact);
     $('course-adopt').style.display = found.length && found.length === n && !courseDraft.marks.some((m) => m.a) ? '' : 'none';
   }
+  ['gate-a', 'gate-b'].forEach((id) => $(id).addEventListener('input', () => drawLine()));
+  document.querySelectorAll('.gate-pick').forEach((btn) => btn.addEventListener('click', () => {
+    picking = btn.dataset.k;
+    focusMap();
+    $('course-msg').textContent = `Klick auf die Karte setzt: Tor Marke ${picking === 'gate-a' ? 'A' : 'B'}.`;
+  }));
   $('gate-add').addEventListener('click', () => {
     const a = Coords.parse($('gate-a').value);
     const b = Coords.parse($('gate-b').value);
@@ -304,6 +341,7 @@
   });
   $('course-add').addEventListener('click', () => {
     picking = picking === 'course' ? null : 'course';
+    if (picking) focusMap();
     $('course-msg').textContent = picking === 'course' ? 'Klicke nacheinander auf die Karte: eine Boje pro Klick (Fahrtreihenfolge). Nochmals klicken beendet.' : '';
   });
   $('course-undo').addEventListener('click', () => { courseDraft.marks.pop(); renderCourse(); drawLine(); });
@@ -599,7 +637,7 @@
     const isDist = !!c && c.lapMode === 'distance';
     $('finish-panel').style.display = isDist ? 'block' : 'none';
     $('cs-laps').disabled = isDist;
-    if (!isDist || document.activeElement.closest('#fl-a,#fl-b,#fl-mark')) return;
+    if (!isDist || flDirty || document.activeElement.closest('#fl-a,#fl-b,#fl-mark')) return;
     const f = regatta.finishLine;
     const txt = (p) => (p ? `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}` : '');
     $('fl-a').value = txt(f && f.a); $('fl-b').value = txt(f && f.b); $('fl-mark').value = txt(f && f.mark);
@@ -631,17 +669,25 @@
   $('cs-new-loop').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'loop' }, 'Neuer Rundkurs angelegt - Linie und Bojen eintragen.')));
   $('cs-new-bounce').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'bounce' }, 'Neuer Kurs angelegt - Linie und Bojen eintragen.')));
   $('cs-new-distance').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'distance' }, 'Neue Langstrecke angelegt - Start-Linie, Bojen und (falls getrennt) Ziellinie eintragen.')));
+  ['fl-a', 'fl-b', 'fl-mark'].forEach((id) => $(id).addEventListener('input', () => { flDirty = true; drawLine(); }));
+  document.querySelectorAll('.fl-pick').forEach((btn) => btn.addEventListener('click', () => {
+    picking = btn.dataset.k;
+    focusMap();
+    $('fl-msg').textContent = `Klick auf die Karte setzt: ${{ 'fl-a': 'Ziellinie Marke A', 'fl-b': 'Ziellinie Marke B', 'fl-mark': 'Referenz Kursseite' }[picking]}.`;
+  }));
   $('fl-save').addEventListener('click', guard(async () => {
     const a = Coords.parse($('fl-a').value); const b = Coords.parse($('fl-b').value);
     const mk = $('fl-mark').value.trim() ? Coords.parse($('fl-mark').value) : null;
     if (!a || !b) { $('fl-msg').textContent = 'Marke A und B als Koordinaten eingeben.'; return; }
     if ($('fl-mark').value.trim() && !mk) { $('fl-msg').textContent = 'Referenz nicht lesbar.'; return; }
     await api('/api/admin/finish-line', 'PUT', mk ? { a, b, mark: mk } : { a, b });
+    flDirty = false;
     $('fl-msg').textContent = 'Ziellinie gespeichert. Gilt fuer neue Wettfahrten bzw. nach "Linie & Kurs aktuell uebernehmen".';
     await load(); renderFinishPanel(); drawLine();
   }));
   $('fl-clear').addEventListener('click', guard(async () => {
     await api('/api/admin/finish-line', 'PUT', { clear: true });
+    flDirty = false;
     $('fl-msg').textContent = 'Ziellinie entfernt: Das Ziel liegt an der Start-Linie.';
     await load(); renderFinishPanel(); drawLine();
   }));
@@ -722,5 +768,7 @@
   let firstLoad = true;
   load().then(() => { loadDrafts(); firstLoad = false; }).catch((e) => alert(e.message));
   // Auto-Refresh der Ergebnisse (nicht waehrend ein Korrektur-Formular offen ist)
-  setInterval(() => { if (!firstLoad && !openRows.size && !document.activeElement.closest('#races')) load().catch(() => {}); }, 10000);
+  // Kein Auto-Refresh, solange in ein Feld getippt wird (Fokus in Eingabefeld/Auswahl) oder ungespeicherte Boots-Eingaben existieren.
+  const typing = () => { const a = document.activeElement; return !!a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName); };
+  setInterval(() => { if (!firstLoad && !openRows.size && !typing() && !Object.keys(boatDraft).length && !document.activeElement.closest('#races')) load().catch(() => {}); }, 10000);
 })();
