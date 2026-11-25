@@ -60,7 +60,10 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// Seiten, Skripte und Stile immer beim Server nachfragen (ETag): sonst zeigen Browser/Cloudflare nach einem Update teils tagelang den alten Stand.
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  setHeaders: (res, file) => { if (/\.(html|js|css|webmanifest)$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); }
+}));
 
 // ---------- Hilfsfunktionen ----------
 
