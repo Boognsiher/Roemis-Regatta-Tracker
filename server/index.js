@@ -245,6 +245,15 @@ app.get('/api/races/:id/results.csv', requireViewer, (req, res) => {
   res.send(regatta.toCsv(regatta.computeResults(race)));
 });
 
+// Ganze Spur eines Boots aus der Historie (fuer die Karte, "Ganze Spur anzeigen"). ?mode=segment|hours|all&hours=24&max=3000
+app.get('/api/trackers/:id/track', requireViewer, (req, res) => {
+  const mode = ['segment', 'hours', 'all'].includes(req.query.mode) ? req.query.mode : 'segment';
+  const hours = Math.min(24 * 365, Math.max(1, parseFloat(req.query.hours) || 24));
+  const out = store.getTrack(req.params.id, { mode, hours, max: parseInt(req.query.max, 10) || undefined });
+  if (!out) return res.status(404).json({ error: 'Tracker unbekannt' });
+  res.json(out);
+});
+
 // Metadaten eines Trackers oeffentlich abrufbar (z.B. fuer die Tracker-Seite selbst: Name/Farbe anzeigen).
 app.get('/api/trackers/:id', requireViewer, (req, res) => {
   const t = store.getPublicTracker(req.params.id);

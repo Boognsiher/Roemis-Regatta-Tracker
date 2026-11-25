@@ -15,6 +15,15 @@
     </header>
     <div class="layout">
       <aside id="sidebar">
+        <div id="track-controls" class="hint" style="margin-bottom:0.6rem">
+          <label style="display:block;margin-bottom:0.3rem"><input type="checkbox" id="full-track" /> Ganze Spur anzeigen</label>
+          <select id="track-range" style="width:100%">
+            <option value="segment">letzte Fahrt (Pause &gt; 30 min)</option>
+            <option value="hours">letzte 24 Stunden</option>
+            <option value="all">alles</option>
+          </select>
+          <div id="track-info" style="margin-top:0.3rem"></div>
+        </div>
         <div id="boat-list"></div>
         <p class="hint">Keine Boote? Im <a href="admin.html">Admin-Bereich</a> einen Tracker anlegen und den
         Link/QR-Code an den Skipper schicken.</p>

@@ -360,6 +360,30 @@ function onlineMap() {
   return out;
 }
 
+// Ganze Spur aus der Historie (17.11.2026, zum Testen): Die Karte haelt live nur die letzten MAX_TRAIL_POINTS Punkte; diese Abfrage liest die
+// vollstaendige Aufzeichnung (gleiche Rausch-Filterung wie die Zeitmessung) und duennt sie auf hoechstens "max" Punkte aus.
+//   mode 'segment': ab der letzten Pause (Luecke > gapMs) = "letzte Fahrt";  'hours': letzte N Stunden;  'all': alles.
+const TRACK_MAX_DEFAULT = 3000;
+const TRACK_MAX_LIMIT = 10000;
+const TRACK_SEGMENT_GAP_MS = 30 * 60 * 1000;
+function getTrack(id, { mode = 'segment', hours = 24, max = TRACK_MAX_DEFAULT, gapMs = TRACK_SEGMENT_GAP_MS } = {}) {
+  if (!trackers[id]) return null;
+  const fixes = timing.normalizeFixes(readHistoryCached(id));   // Kopie: sortiert, ohne Duplikate und Stillstandsrauschen
+  let start = 0;
+  if (mode === 'segment') {
+    start = Math.max(0, fixes.length - 1);
+    while (start > 0 && fixes[start].ts - fixes[start - 1].ts <= gapMs) start -= 1;
+  } else if (mode === 'hours') {
+    const from = Date.now() - hours * 3600 * 1000;
+    start = fixes.findIndex((f) => f.ts >= from);
+    if (start < 0) start = fixes.length;
+  }
+  const part = fixes.slice(start);
+  const limit = Math.max(2, Math.min(TRACK_MAX_LIMIT, Math.floor(max) || TRACK_MAX_DEFAULT));
+  const points = decimate(part, limit).map((f) => ({ lat: f.lat, lon: f.lon, ts: f.ts, speed: f.speed ?? null }));
+  return { mode, total: part.length, shown: points.length, from: part.length ? part[0].ts : null, to: part.length ? part[part.length - 1].ts : null, points };
+}
+
 function listPublicTrackers() {
   return listTrackers().map((t) => getPublicTracker(t.id));
 }
@@ -378,6 +402,7 @@ module.exports = {
   findTrackerByToken,
   decimate,
   staleMap,
+  getTrack,
   onlineMap,
   getTrackerByLoraId,
   setLoraId,
