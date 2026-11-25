@@ -106,11 +106,47 @@
   const trackRangeEl = document.getElementById('track-range');
   const trackInfoEl = document.getElementById('track-info');
 
+  // Nur die Darstellung wird geglaettet; Zeitnahme und Daten bleiben unveraendert.
+  const smoothEl = document.getElementById('smooth-track');
+  let smoothOn = true;
+  try { smoothOn = localStorage.getItem('smoothTrack') !== '0'; } catch (e) { /* ohne Speicher: Standard an */ }
+  if (smoothEl) smoothEl.checked = smoothOn;
+
+  /**
+   * Spur fuer die Anzeige glaetten: (1) Punkte, die weniger als MIN_STEP_M vom letzten behaltenen liegen, entfallen (GPS-Zittern im Stand,
+   * Kreisel beim Warten); (2) Eckenschneiden nach Chaikin (2 Durchgaenge) rundet die Zickzacks. Anfangs- und Endpunkt bleiben exakt.
+   */
+  const MIN_STEP_M = 3;
+  function smoothTrack(pts) {
+    if (pts.length < 3) return pts.map((p) => [p.lat, p.lon]);
+    const k = Math.cos((pts[0].lat * Math.PI) / 180);
+    const dist = (a, b) => Math.hypot((b.lat - a.lat) * 111320, (b.lon - a.lon) * 111320 * k);
+    const kept = [pts[0]];
+    for (let i = 1; i < pts.length - 1; i += 1) if (dist(kept[kept.length - 1], pts[i]) >= MIN_STEP_M) kept.push(pts[i]);
+    kept.push(pts[pts.length - 1]);
+    let line = kept.map((p) => [p.lat, p.lon]);
+    for (let it = 0; it < 2 && line.length > 2; it += 1) {
+      const out = [line[0]];
+      for (let i = 0; i < line.length - 1; i += 1) {
+        const [a, b] = [line[i], line[i + 1]];
+        out.push([0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]], [0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]]);
+      }
+      out.push(line[line.length - 1]);
+      line = out;
+    }
+    return line;
+  }
+
   function redrawLine(entry) {
     if (!entry.line) return;
     const pts = fullTrack && entry.full ? entry.full : entry.trail;
-    entry.line.setLatLngs(pts.map((p) => [p.lat, p.lon]));
+    entry.line.setLatLngs(smoothOn ? smoothTrack(pts) : pts.map((p) => [p.lat, p.lon]));
   }
+  if (smoothEl) smoothEl.addEventListener('change', () => {
+    smoothOn = smoothEl.checked;
+    try { localStorage.setItem('smoothTrack', smoothOn ? '1' : '0'); } catch (e) { /* egal */ }
+    for (const entry of boats.values()) redrawLine(entry);
+  });
 
   function fmtClock(ts) {
     return new Date(ts).toLocaleString('de-CH', { hour12: false, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
