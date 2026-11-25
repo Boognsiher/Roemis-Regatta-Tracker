@@ -19,7 +19,7 @@ const STATUS_CODES = ['DNS', 'DNF', 'DSQ', 'OCS', 'RET', 'DNC'];
 
 /** @type {{classes: object[], boats: Record<string, object>, line: object|null, races: object[]}} */
 const state = Object.assign(
-  { classes: [], boats: {}, line: null, finishLine: null, course: null, courses: [], activeCourseId: null, races: [] },
+  { classes: [], boats: {}, line: null, finishLine: null, course: null, courses: [], activeCourseId: null, liveCourseId: null, races: [] },
   store.loadJson(FILE, {})
 );
 
@@ -226,7 +226,21 @@ function deleteCourse(id) {
   if (state.courses.length <= 1) throw httpError(409, 'Der letzte Kurs kann nicht geloescht werden');
   state.courses = state.courses.filter((c) => c.id !== id);
   if (state.activeCourseId === id) activateCourse(state.courses[0].id);
+  if (state.liveCourseId === id) state.liveCourseId = null;
   save();
+}
+
+/**
+ * Kurs auf der oeffentlichen Live-Karte aufschalten (courseId) oder abschalten (null). Unabhaengig vom Kurs, den die Wettfahrtleitung gerade bearbeitet
+ * (aktiver Kurs): auf der Live-Karte erscheint nur, was die Wettfahrtleitung aufgeschaltet hat; Aenderungen am aufgeschalteten Kurs sind sofort sichtbar.
+ */
+function setLiveCourse(courseId) {
+  if (courseId === null || courseId === undefined || courseId === '') { state.liveCourseId = null; save(); return null; }
+  const c = courseById(courseId);
+  if (!c) throw httpError(404, 'Kurs unbekannt');
+  state.liveCourseId = c.id;
+  save();
+  return c;
 }
 
 // ---------- Linie ----------
@@ -691,6 +705,8 @@ function publicState() {
     course: state.course,
     courses: state.courses,
     activeCourseId: state.activeCourseId,
+    liveCourseId: state.liveCourseId || null,
+    liveCourse: (() => { const c = courseById(state.liveCourseId); return c ? { id: c.id, name: c.name, line: c.line || null, finishLine: c.finishLine || null, marks: (c.course && c.course.marks) || [] } : null; })(),
     races: state.races.map((r) => ({
       id: r.id, name: r.name, courseId: r.courseId || null, courseName: r.courseName || null, laps: r.laps, minLapSeconds: r.minLapSeconds, cutoffMinutes: r.cutoffMinutes || 180,
       lapMode: r.lapMode || 'bounce', startOnExtension: r.startOnExtension === true, startTs: r.startTs, official: r.official, auto: !!r.auto, autoFrom: r.autoFrom || null, autoTo: r.autoTo || null, classes: r.auto ? autoClasses(r) : [], overrides: r.overrides, hasLine: !!r.line, hasFinishLine: !!r.finishLine, hasCourse: !!r.course
@@ -848,7 +864,7 @@ module.exports = {
   listCourses, createCourse, updateCourse, activateCourse, deleteCourse, courseById, activeCourse,
   exportSelection, computeLive, getLive, isRunning, runningRaces,
   flush, state, STATUS_CODES, httpError, publicState,
-  setCourse, setFinishLine, resolveFinishLine, applyGeometry, raceEnd, windowFixes,
+  setCourse, setFinishLine, setLiveCourse, resolveFinishLine, applyGeometry, raceEnd, windowFixes,
   addClass, importClasses, deleteClass, registerBoat, unregisterBoat, setLine,
   getRace, tickAuto, createRace, updateRace, deleteRace, startRace, clearStart, setOverride, setOfficial,
   computeResults, toCsv

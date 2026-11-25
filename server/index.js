@@ -441,6 +441,11 @@ function sendExport(kind) {
 app.get('/api/admin/export/tracks.csv', requireAdmin, sendExport('csv'));
 app.get('/api/admin/export/tracks.gpx', requireAdmin, sendExport('gpx'));
 
+app.put('/api/admin/live-course', requireAdmin, (req, res) => {
+  regatta.setLiveCourse(req.body ? req.body.courseId : null);
+  res.json({ liveCourseId: regatta.publicState().liveCourseId });
+});
+
 app.post('/api/admin/races', requireAdmin, (req, res) => {
   res.status(201).json({ race: regatta.createRace(req.body || {}) });
 });

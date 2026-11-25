@@ -278,7 +278,7 @@
   if (zoomBtn) zoomBtn.addEventListener('click', async () => {
     if (!courseBounds.length) await drawCourse();
     if (courseBounds.length) map.fitBounds(courseBounds, { maxZoom: 16, padding: [30, 30] });
-    else zoomBtn.textContent = 'Kein Kurs gespeichert';
+    else zoomBtn.textContent = 'Kein Kurs aufgeschaltet';
   });
   try { showCourse = localStorage.getItem('showCourse') !== '0'; } catch (e) { /* Standard: an */ }
   if (courseEl) courseEl.checked = showCourse;
@@ -294,14 +294,16 @@
       reg = await res.json();
     } catch (err) { return; }
     courseBounds = [];
+    const live = reg.liveCourse;                   // nur der von der Wettfahrtleitung aufgeschaltete Kurs
+    if (!live) return;
     const ll = (q) => [q.lat, q.lon];
-    const line = reg.line;
+    const line = live.line;
     if (line && line.a && line.b) {
       L.polyline([ll(line.a), ll(line.b)], { color: '#e6194b', weight: 4 }).bindTooltip('Start' + (reg.finishLine ? '' : ' / Ziel'), { permanent: true, direction: 'top' }).addTo(courseLayer);
     }
-    const f = reg.finishLine;
+    const f = live.finishLine;
     if (f && f.a && f.b) L.polyline([ll(f.a), ll(f.b)], { color: '#3cb44b', weight: 4 }).bindTooltip('Ziel', { permanent: true, direction: 'bottom' }).addTo(courseLayer);
-    const marks = (reg.course && reg.course.marks) || [];
+    const marks = live.marks || [];
     const centers = [];
     marks.forEach((m, i) => {
       if (m.a && m.b) {
