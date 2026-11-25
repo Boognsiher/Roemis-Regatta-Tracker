@@ -278,7 +278,7 @@
   if (zoomBtn) zoomBtn.addEventListener('click', async () => {
     if (!courseBounds.length) await drawCourse();
     if (courseBounds.length) map.fitBounds(courseBounds, { maxZoom: 16, padding: [30, 30] });
-    else zoomBtn.textContent = 'Kurs erscheint nach dem Start';
+    else zoomBtn.textContent = 'Kein Kurs gespeichert';
   });
   try { showCourse = localStorage.getItem('showCourse') !== '0'; } catch (e) { /* Standard: an */ }
   if (courseEl) courseEl.checked = showCourse;
@@ -293,11 +293,7 @@
       if (res.status === 401) return;
       reg = await res.json();
     } catch (err) { return; }
-    // Der Kurs erscheint erst, wenn eine Wettfahrt gestartet ist (und bis Zielschluss bzw. offizielles Ergebnis); bei automatischem Start ab erkanntem Start.
-    const now = Date.now();
-    const started = (reg.races || []).some((r) => r.startTs != null && !r.official && now < r.startTs + (r.cutoffMinutes || 180) * 60000);
     courseBounds = [];
-    if (!started) return;
     const ll = (q) => [q.lat, q.lon];
     const line = reg.line;
     if (line && line.a && line.b) {
