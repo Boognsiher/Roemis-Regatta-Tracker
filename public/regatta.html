@@ -171,7 +171,8 @@
         <p class="hint">Getrackte Logs nachtraeglich in die Aufzeichnung einfuegen, zum Beispiel wenn Pakete fehlten oder ein Tracker nur im Flash mitgeschrieben hat.
           Erkannt werden: <b>Flash-Log eines Trackers</b> (CSV aus dem Befehl <span class="mono">d</span>), <b>Server-Export</b> (positionen-*.csv),
           <b>Segeluhr-Logs</b> (trackerlog_*.csv, diagnose_*.csv) und <b>GPX</b>. Du ordnest jede erkannte Strecke einem Tracker (Boot) zu. Zeitstempel, die schon vorhanden
-          sind, werden uebersprungen: ein doppelter Import schadet nicht. Danach erscheinen die Punkte in der Historie und in nachtraeglichen Wettfahrten.</p>
+          sind, werden uebersprungen: ein doppelter Import schadet nicht. Danach erscheinen die Punkte in der Historie und in nachtraeglichen Wettfahrten.
+          <b>Simulation:</b> Mit dem Zeitversatz (Sekunden) pro Strecke verschiebst du alle Zeitstempel, zum Beispiel einen Tracker 1 bis 3 Sekunden spaeter, und ordnest die Strecke einem eigenen Test-Tracker zu (nicht dem Original, sonst vermischen sich beide Spuren).</p>
         <div class="row"><div class="field"><label for="imp-files">Dateien (mehrere moeglich)</label>
           <input type="file" id="imp-files" multiple accept=".csv,.gpx,.txt,text/csv,application/gpx+xml" /></div></div>
         <div id="imp-list"></div>
