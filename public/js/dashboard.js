@@ -269,6 +269,59 @@
     trackers.forEach(upsertBoat);
   }
 
+  // ---- Wettfahrtkurs auf der Karte (Start-/Ziellinie, Bojen, Tore des aktiven Kurses) ----
+  const courseEl = document.getElementById('show-course');
+  const courseLayer = L.layerGroup().addTo(map);
+  let showCourse = true;
+  try { showCourse = localStorage.getItem('showCourse') !== '0'; } catch (e) { /* Standard: an */ }
+  if (courseEl) courseEl.checked = showCourse;
+  const escHtml = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const SIDE_TXT = { port: ' (Backbord)', starboard: ' (Steuerbord)' };
+  async function drawCourse() {
+    courseLayer.clearLayers();
+    if (!showCourse) return;
+    let reg;
+    try {
+      const res = await fetch('/api/regatta');
+      if (res.status === 401) return;
+      reg = await res.json();
+    } catch (err) { return; }
+    const ll = (q) => [q.lat, q.lon];
+    const line = reg.line;
+    if (line && line.a && line.b) {
+      L.polyline([ll(line.a), ll(line.b)], { color: '#e6194b', weight: 4 }).bindTooltip('Start' + (reg.finishLine ? '' : ' / Ziel'), { permanent: true, direction: 'top' }).addTo(courseLayer);
+    }
+    const f = reg.finishLine;
+    if (f && f.a && f.b) L.polyline([ll(f.a), ll(f.b)], { color: '#3cb44b', weight: 4 }).bindTooltip('Ziel', { permanent: true, direction: 'bottom' }).addTo(courseLayer);
+    const marks = (reg.course && reg.course.marks) || [];
+    const centers = [];
+    marks.forEach((m, i) => {
+      if (m.a && m.b) {
+        L.polyline([ll(m.a), ll(m.b)], { color: '#f58231', weight: 4 }).addTo(courseLayer);
+        L.circleMarker(ll(m.a), { radius: 6, color: '#f58231', fillOpacity: 0.8 }).bindTooltip(`Tor ${i + 1}`, { permanent: true, direction: 'top' }).addTo(courseLayer);
+        L.circleMarker(ll(m.b), { radius: 6, color: '#f58231', fillOpacity: 0.8 }).addTo(courseLayer);
+        centers.push([(m.a.lat + m.b.lat) / 2, (m.a.lon + m.b.lon) / 2]);
+      } else {
+        L.circleMarker(ll(m), { radius: 9, color: '#f58231', fillOpacity: 0.7 }).bindTooltip(escHtml(`Boje ${i + 1}${SIDE_TXT[m.rounding] || ''}`), { permanent: true, direction: 'top' }).addTo(courseLayer);
+        centers.push(ll(m));
+      }
+    });
+    if (centers.length > 1) L.polyline(centers, { color: '#f58231', weight: 2, dashArray: '6 6', opacity: 0.8 }).addTo(courseLayer);
+    // Beim ersten Laden auf den Kurs zoomen, falls noch kein Boot die Karte bestimmt hat
+    if (!drawCourse.fitted && !boats.size && (line || marks.length)) {
+      drawCourse.fitted = true;
+      const pts = [line && line.a, line && line.b, ...marks.flatMap((m) => (m.a ? [m.a, m.b] : [m]))].filter(Boolean).map(ll);
+      if (pts.length) map.fitBounds(pts, { maxZoom: 16, padding: [30, 30] });
+    }
+  }
+  if (courseEl) courseEl.addEventListener('change', () => {
+    showCourse = courseEl.checked;
+    try { localStorage.setItem('showCourse', showCourse ? '1' : '0'); } catch (e) { /* egal */ }
+    drawCourse();
+  });
+  drawCourse();
+  setInterval(drawCourse, 30000);
+
   async function loadInitial() {
     try {
       const res = await fetch('/api/trackers');

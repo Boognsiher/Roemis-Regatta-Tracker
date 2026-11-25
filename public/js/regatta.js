@@ -111,6 +111,8 @@
     layer.addTo(map);
   }
   let picking = null;
+  /** Beim Start eines Karten-Klick-Modus zur Karte scrollen, damit man direkt klicken kann. */
+  function focusMap() { const el = document.getElementById('line-map'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
   let flDirty = false;   // Ziellinien-Felder wurden geaendert und noch nicht gespeichert (kein Ueberschreiben durch den Auto-Refresh)
   const LABEL = { a: 'Linie A (Startschiff)', b: 'Linie B (Pin)', mark: 'Referenz-Tonne (Kursseite)' };
 
@@ -177,7 +179,7 @@
         input.value = Coords.format(c);
         drawLine();
       });
-      row.querySelector('.pick').addEventListener('click', () => { picking = k; $('line-msg').textContent = `Klick auf die Karte setzt: ${LABEL[k]}`; });
+      row.querySelector('.pick').addEventListener('click', () => { picking = k; $('line-msg').textContent = `Klick auf die Karte setzt: ${LABEL[k]}`; focusMap(); });
       row.querySelector('.from-tracker').addEventListener('change', (e) => {
         const t = trackers.find((x) => x.id === e.target.value);
         if (t && t.latest) { lineDraft[k] = { lat: t.latest.lat, lon: t.latest.lon }; renderLineControls(); drawLine(); }
@@ -281,6 +283,7 @@
   ['gate-a', 'gate-b'].forEach((id) => $(id).addEventListener('input', () => drawLine()));
   document.querySelectorAll('.gate-pick').forEach((btn) => btn.addEventListener('click', () => {
     picking = btn.dataset.k;
+    focusMap();
     $('course-msg').textContent = `Klick auf die Karte setzt: Tor Marke ${picking === 'gate-a' ? 'A' : 'B'}.`;
   }));
   $('gate-add').addEventListener('click', () => {
@@ -338,6 +341,7 @@
   });
   $('course-add').addEventListener('click', () => {
     picking = picking === 'course' ? null : 'course';
+    if (picking) focusMap();
     $('course-msg').textContent = picking === 'course' ? 'Klicke nacheinander auf die Karte: eine Boje pro Klick (Fahrtreihenfolge). Nochmals klicken beendet.' : '';
   });
   $('course-undo').addEventListener('click', () => { courseDraft.marks.pop(); renderCourse(); drawLine(); });
@@ -668,6 +672,7 @@
   ['fl-a', 'fl-b', 'fl-mark'].forEach((id) => $(id).addEventListener('input', () => { flDirty = true; drawLine(); }));
   document.querySelectorAll('.fl-pick').forEach((btn) => btn.addEventListener('click', () => {
     picking = btn.dataset.k;
+    focusMap();
     $('fl-msg').textContent = `Klick auf die Karte setzt: ${{ 'fl-a': 'Ziellinie Marke A', 'fl-b': 'Ziellinie Marke B', 'fl-mark': 'Referenz Kursseite' }[picking]}.`;
   }));
   $('fl-save').addEventListener('click', guard(async () => {
