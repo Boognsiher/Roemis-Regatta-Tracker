@@ -148,9 +148,22 @@
         </div>
         <p class="hint">Ohne Von/Bis wird alles exportiert.</p>
       </div>
+
+      <div class="card">
+        <h2 style="margin-top:0">6. Logs importieren</h2>
+        <p class="hint">Getrackte Logs nachtraeglich in die Aufzeichnung einfuegen, zum Beispiel wenn Pakete fehlten oder ein Tracker nur im Flash mitgeschrieben hat.
+          Erkannt werden: <b>Flash-Log eines Trackers</b> (CSV aus dem Befehl <span class="mono">d</span>), <b>Server-Export</b> (positionen-*.csv),
+          <b>Segeluhr-Logs</b> (trackerlog_*.csv, diagnose_*.csv) und <b>GPX</b>. Du ordnest jede erkannte Strecke einem Tracker (Boot) zu. Zeitstempel, die schon vorhanden
+          sind, werden uebersprungen: ein doppelter Import schadet nicht. Danach erscheinen die Punkte in der Historie und in nachtraeglichen Wettfahrten.</p>
+        <div class="row"><div class="field"><label for="imp-files">Dateien (mehrere moeglich)</label>
+          <input type="file" id="imp-files" multiple accept=".csv,.gpx,.txt,text/csv,application/gpx+xml" /></div></div>
+        <div id="imp-list"></div>
+        <div class="row"><button id="imp-run" style="display:none">Importieren</button><span id="imp-msg" class="hint"></span></div>
+      </div>
     </div>
   </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/importlog.js"></script>
 <script src="js/coords.js"></script>
 <script src="js/regatta.js"></script>
 </body>

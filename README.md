@@ -62,6 +62,12 @@ Bootliste laedt der Browser die Strecke aus der vollstaendigen Aufzeichnung: "le
 oder "alles", auf hoechstens 3000 Punkte ausgeduennt (`GET /api/trackers/<id>/track?mode=segment|hours|all&max=3000`). Neue Live-Punkte werden angehaengt.
 Die Aufzeichnung selbst ist immer vollstaendig; fuer den Dauerbetrieb mit vielen Zuschauern ist die Funktion noch nicht ausgelegt (Abfrage liest die ganze Historie).
 
+**Logs importieren** (`/regatta.html`, Bereich 6): Getrackte Logs nachtraeglich in die Aufzeichnung einfuegen. Erkannt werden das Flash-Log eines Trackers
+(CSV aus dem Befehl `d`), der Server-Export (`positionen-*.csv`), die Segeluhr-Logs (`trackerlog_*.csv`, `diagnose_*.csv`) und GPX. Der Browser liest die
+Datei ein, zeigt je erkannter Strecke Punkte und Zeitraum, und du ordnest sie einem Tracker zu (Vorauswahl ueber die LoRa-Nr oder den Namen). Importiert
+wird in Stuecken zu 2000 Punkten ueber `POST /api/admin/import` (nur Admin). Zeitstempel, die schon in der Historie stehen, werden uebersprungen; Zeilen ohne
+Position (Lebenszeichen ohne Fix) ebenso. Die Live-Position wird nur ersetzt, wenn ein importierter Punkt neuer ist.
+
 ## Zeitmessung und Yardstick-Auswertung
 
 Seiten: **Wettfahrtleitung** `/regatta.html` (Admin-Login wie `/admin.html`), oeffentliche Ergebnisse `/results.html`.

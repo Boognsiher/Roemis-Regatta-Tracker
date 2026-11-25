@@ -245,6 +245,18 @@ app.get('/api/races/:id/results.csv', requireViewer, (req, res) => {
   res.send(regatta.toCsv(regatta.computeResults(race)));
 });
 
+// Import getrackter Logs in die Historie eines Trackers (Admin). Der Browser liest die Datei ein (public/js/importlog.js) und sendet
+// sie in Stuecken von hoechstens 2000 Punkten: { trackerId, positions: [{ts, lat, lon, speed?, heading?, battery?, accuracy?}] }
+app.post('/api/admin/import', requireAdmin, (req, res) => {
+  const { trackerId, positions } = req.body || {};
+  if (!store.getTracker(trackerId)) return res.status(404).json({ error: 'Tracker unbekannt' });
+  if (!Array.isArray(positions) || !positions.length) return res.status(400).json({ error: 'Keine Positionen' });
+  if (positions.length > 2000) return res.status(413).json({ error: 'Zu viele Positionen auf einmal (hoechstens 2000)' });
+  const out = store.importPositions(trackerId, positions);
+  if (out.error) return res.status(500).json(out);
+  res.json({ ok: true, ...out });
+});
+
 // Ganze Spur eines Boots aus der Historie (fuer die Karte, "Ganze Spur anzeigen"). ?mode=segment|hours|all&hours=24&max=3000
 app.get('/api/trackers/:id/track', requireViewer, (req, res) => {
   const mode = ['segment', 'hours', 'all'].includes(req.query.mode) ? req.query.mode : 'segment';

@@ -603,6 +603,68 @@
     minLapSeconds: $('cs-minlap').value, cutoffMinutes: $('cs-cutoff').value, startOnExtension: $('cs-ext').checked
   }, 'Regeln gespeichert.')));
 
+  // ---------- Logs importieren ----------
+  const impGroups = [];   // { file, format, g, targetSel }
+  const fmtLocal = (ts) => new Date(ts).toLocaleString('de-CH', { hour12: false });
+
+  async function renderImportList() {
+    const list = $('imp-list');
+    if (!impGroups.length) { list.innerHTML = ''; $('imp-run').style.display = 'none'; return; }
+    const adminTrackers = (await api('/api/admin/trackers')).trackers || [];
+    const opts = '<option value="">nicht importieren</option>' + adminTrackers.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}${t.loraId ? ` (LoRa-Nr ${t.loraId})` : ''}</option>`).join('');
+    list.innerHTML = `<table class="results"><thead><tr><th>Datei</th><th>Strecke</th><th>Punkte</th><th>Zeitraum</th><th>Importieren als</th></tr></thead><tbody>${
+      impGroups.map((x, i) => `<tr><td>${esc(x.file)}<div class="hint">${esc(x.format)}</div></td><td>${esc(x.g.label)}</td><td class="num">${x.g.points.length}</td>
+        <td class="num">${fmtLocal(x.g.points[0].ts)}<br>bis ${fmtLocal(x.g.points[x.g.points.length - 1].ts)}</td>
+        <td><select data-i="${i}" class="imp-target" style="width:auto">${opts}</select></td></tr>`).join('')}</tbody></table>`;
+    list.querySelectorAll('.imp-target').forEach((sel) => {
+      const x = impGroups[Number(sel.dataset.i)];
+      // Vorauswahl: gleiche LoRa-Nr, sonst gleicher Name
+      const byLora = x.g.loraId ? adminTrackers.find((t) => t.loraId === x.g.loraId) : null;
+      const byName = x.g.boatName ? adminTrackers.find((t) => t.name.toLowerCase() === x.g.boatName.toLowerCase()) : null;
+      const pre = byLora || byName;
+      if (pre) sel.value = pre.id;
+    });
+    $('imp-run').style.display = 'inline-block';
+  }
+
+  $('imp-files').addEventListener('change', guard(async (e) => {
+    impGroups.length = 0;
+    const notes = [];
+    for (const file of e.target.files) {
+      const r = ImportLog.parse(await file.text(), file.name);
+      if (!r.format) { notes.push(`${file.name}: ${r.notes[0]}`); continue; }
+      r.notes.forEach((n) => notes.push(`${file.name}: ${n}`));
+      if (r.skipped) notes.push(`${file.name}: ${r.skipped} Zeile(n) ohne gueltige Position uebersprungen (z.B. Lebenszeichen ohne Fix).`);
+      r.groups.forEach((g) => impGroups.push({ file: file.name, format: r.format, g }));
+    }
+    $('imp-msg').textContent = notes.join(' ');
+    await renderImportList();
+  }));
+
+  $('imp-run').addEventListener('click', guard(async () => {
+    const jobs = [...document.querySelectorAll('.imp-target')].map((sel) => ({ x: impGroups[Number(sel.dataset.i)], id: sel.value })).filter((j) => j.id);
+    if (!jobs.length) { $('imp-msg').textContent = 'Bitte mindestens einer Strecke einen Tracker zuordnen.'; return; }
+    $('imp-run').disabled = true;
+    const lines = [];
+    try {
+      for (const { x, id } of jobs) {
+        const pts = x.g.points;
+        const sum = { imported: 0, duplicates: 0, invalid: 0 };
+        for (let i = 0; i < pts.length; i += 2000) {
+          $('imp-msg').textContent = `Importiere ${x.g.label} ... ${Math.min(i + 2000, pts.length)} / ${pts.length}`;
+          const r = await api('/api/admin/import', 'POST', { trackerId: id, positions: pts.slice(i, i + 2000) });
+          sum.imported += r.imported; sum.duplicates += r.duplicates; sum.invalid += r.invalid;
+        }
+        const name = ((await api('/api/admin/trackers')).trackers.find((t) => t.id === id) || {}).name || id;
+        lines.push(`${x.g.label} -> ${name}: ${sum.imported} importiert, ${sum.duplicates} schon vorhanden, ${sum.invalid} ungueltig`);
+      }
+    } finally {
+      $('imp-run').disabled = false;
+    }
+    $('imp-msg').textContent = lines.join(' | ');
+    await loadHistory();
+  }));
+
   let firstLoad = true;
   load().then(() => { loadDrafts(); firstLoad = false; }).catch((e) => alert(e.message));
   // Auto-Refresh der Ergebnisse (nicht waehrend ein Korrektur-Formular offen ist)

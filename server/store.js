@@ -360,6 +360,43 @@ function onlineMap() {
   return out;
 }
 
+/**
+ * Import getrackter Logs (z.B. Flash-Log eines Trackers, Segeluhr-Log, GPX): schreibt nur in die Historie. Zeitstempel, die schon vorhanden
+ * sind, werden uebersprungen (doppelter Import ist unkritisch). Die Live-Position wird nur ersetzt, wenn ein importierter Punkt neuer ist.
+ */
+function importPositions(id, list) {
+  if (!trackers[id]) return null;
+  const seen = new Set(readHistoryCached(id).map((f) => f.ts));
+  const maxTs = Date.now() + 5 * 60 * 1000;
+  const minTs = Date.UTC(2020, 0, 1);
+  const fresh = [];
+  let duplicates = 0;
+  let invalid = 0;
+  const optNum = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  for (const p of list) {
+    const ts = p && Number.isFinite(p.ts) ? Math.round(p.ts) : NaN;
+    if (!p || !Number.isFinite(p.lat) || !Number.isFinite(p.lon) || Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180 || !(ts >= minTs && ts <= maxTs)) { invalid += 1; continue; }
+    if (seen.has(ts)) { duplicates += 1; continue; }
+    seen.add(ts);
+    fresh.push({ lat: p.lat, lon: p.lon, accuracy: optNum(p.accuracy), speed: optNum(p.speed), heading: optNum(p.heading), battery: optNum(p.battery), ts });
+  }
+  fresh.sort((a, b) => a.ts - b.ts);
+  if (fresh.length) {
+    try {
+      fs.mkdirSync(HISTORY_DIR, { recursive: true });
+      fs.appendFileSync(historyFile(id), fresh.map((e) => JSON.stringify(e)).join('\n') + '\n');
+    } catch (err) {
+      console.error('[import] Schreiben fehlgeschlagen:', err.message);
+      return { imported: 0, duplicates, invalid, error: 'Schreiben fehlgeschlagen' };
+    }
+    if (!positions[id]) positions[id] = { latest: null, trail: [] };
+    const newest = fresh[fresh.length - 1];
+    if (!positions[id].latest || newest.ts > positions[id].latest.ts) positions[id].latest = newest;
+    scheduleSave();
+  }
+  return { imported: fresh.length, duplicates, invalid, from: fresh.length ? fresh[0].ts : null, to: fresh.length ? fresh[fresh.length - 1].ts : null };
+}
+
 // Ganze Spur aus der Historie (17.11.2026, zum Testen): Die Karte haelt live nur die letzten MAX_TRAIL_POINTS Punkte; diese Abfrage liest die
 // vollstaendige Aufzeichnung (gleiche Rausch-Filterung wie die Zeitmessung) und duennt sie auf hoechstens "max" Punkte aus.
 //   mode 'segment': ab der letzten Pause (Luecke > gapMs) = "letzte Fahrt";  'hours': letzte N Stunden;  'all': alles.
@@ -403,6 +440,7 @@ module.exports = {
   decimate,
   staleMap,
   getTrack,
+  importPositions,
   onlineMap,
   getTrackerByLoraId,
   setLoraId,
