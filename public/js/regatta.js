@@ -663,10 +663,11 @@
     if (!impGroups.length) { list.innerHTML = ''; $('imp-run').style.display = 'none'; return; }
     const adminTrackers = (await api('/api/admin/trackers')).trackers || [];
     const opts = '<option value="">nicht importieren</option>' + adminTrackers.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}${t.loraId ? ` (LoRa-Nr ${t.loraId})` : ''}</option>`).join('');
-    list.innerHTML = `<table class="results"><thead><tr><th>Datei</th><th>Strecke</th><th>Punkte</th><th>Zeitraum</th><th>Importieren als</th></tr></thead><tbody>${
+    list.innerHTML = `<table class="results"><thead><tr><th>Datei</th><th>Strecke</th><th>Punkte</th><th>Zeitraum</th><th>Importieren als</th><th title="Alle Zeitstempel dieser Strecke um so viele Sekunden verschieben (negativ = frueher). Fuer Simulationen.">Zeitversatz (s)</th></tr></thead><tbody>${
       impGroups.map((x, i) => `<tr><td>${esc(x.file)}<div class="hint">${esc(x.format)}</div></td><td>${esc(x.g.label)}</td><td class="num">${x.g.points.length}</td>
         <td class="num">${fmtLocal(x.g.points[0].ts)}<br>bis ${fmtLocal(x.g.points[x.g.points.length - 1].ts)}</td>
-        <td><select data-i="${i}" class="imp-target" style="width:auto">${opts}</select></td></tr>`).join('')}</tbody></table>`;
+        <td><select data-i="${i}" class="imp-target" style="width:auto">${opts}</select></td>
+        <td><input type="number" step="0.1" value="0" data-i="${i}" class="imp-offset" style="width:80px" /></td></tr>`).join('')}</tbody></table>`;
     list.querySelectorAll('.imp-target').forEach((sel) => {
       const x = impGroups[Number(sel.dataset.i)];
       // Vorauswahl: gleiche LoRa-Nr, sonst gleicher Name
@@ -693,13 +694,15 @@
   }));
 
   $('imp-run').addEventListener('click', guard(async () => {
-    const jobs = [...document.querySelectorAll('.imp-target')].map((sel) => ({ x: impGroups[Number(sel.dataset.i)], id: sel.value })).filter((j) => j.id);
+    const offsets = {};
+    document.querySelectorAll('.imp-offset').forEach((inp) => { offsets[inp.dataset.i] = Math.round((parseFloat(String(inp.value).replace(',', '.')) || 0) * 1000); });
+    const jobs = [...document.querySelectorAll('.imp-target')].map((sel) => ({ x: impGroups[Number(sel.dataset.i)], id: sel.value, offMs: offsets[sel.dataset.i] || 0 })).filter((j) => j.id);
     if (!jobs.length) { $('imp-msg').textContent = 'Bitte mindestens einer Strecke einen Tracker zuordnen.'; return; }
     $('imp-run').disabled = true;
     const lines = [];
     try {
-      for (const { x, id } of jobs) {
-        const pts = x.g.points;
+      for (const { x, id, offMs } of jobs) {
+        const pts = offMs ? x.g.points.map((q) => ({ ...q, ts: q.ts + offMs })) : x.g.points;
         const sum = { imported: 0, duplicates: 0, invalid: 0 };
         for (let i = 0; i < pts.length; i += 2000) {
           $('imp-msg').textContent = `Importiere ${x.g.label} ... ${Math.min(i + 2000, pts.length)} / ${pts.length}`;
@@ -707,7 +710,7 @@
           sum.imported += r.imported; sum.duplicates += r.duplicates; sum.invalid += r.invalid;
         }
         const name = ((await api('/api/admin/trackers')).trackers.find((t) => t.id === id) || {}).name || id;
-        lines.push(`${x.g.label} -> ${name}: ${sum.imported} importiert, ${sum.duplicates} schon vorhanden, ${sum.invalid} ungueltig`);
+        lines.push(`${x.g.label} -> ${name}${offMs ? ` (Zeitversatz ${offMs / 1000} s)` : ''}: ${sum.imported} importiert, ${sum.duplicates} schon vorhanden, ${sum.invalid} ungueltig`);
       }
     } finally {
       $('imp-run').disabled = false;
