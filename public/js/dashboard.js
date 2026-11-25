@@ -273,6 +273,13 @@
   const courseEl = document.getElementById('show-course');
   const courseLayer = L.layerGroup().addTo(map);
   let showCourse = true;
+  let courseBounds = [];
+  const zoomBtn = document.getElementById('zoom-course');
+  if (zoomBtn) zoomBtn.addEventListener('click', async () => {
+    if (!courseBounds.length) await drawCourse();
+    if (courseBounds.length) map.fitBounds(courseBounds, { maxZoom: 16, padding: [30, 30] });
+    else zoomBtn.textContent = 'Kein Kurs gespeichert';
+  });
   try { showCourse = localStorage.getItem('showCourse') !== '0'; } catch (e) { /* Standard: an */ }
   if (courseEl) courseEl.checked = showCourse;
   const escHtml = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -307,11 +314,11 @@
       }
     });
     if (centers.length > 1) L.polyline(centers, { color: '#f58231', weight: 2, dashArray: '6 6', opacity: 0.8 }).addTo(courseLayer);
-    // Beim ersten Laden auf den Kurs zoomen, falls noch kein Boot die Karte bestimmt hat
-    if (!drawCourse.fitted && !boats.size && (line || marks.length)) {
+    // Punkte des Kurses merken (fuer den Knopf "Zum Kurs zoomen"); beim ersten Laden auf den Kurs zoomen, falls noch kein Boot die Karte bestimmt hat
+    courseBounds = [line && line.a, line && line.b, f && f.a, f && f.b, ...marks.flatMap((m) => (m.a ? [m.a, m.b] : [m]))].filter(Boolean).map(ll);
+    if (!drawCourse.fitted && !boats.size && courseBounds.length) {
       drawCourse.fitted = true;
-      const pts = [line && line.a, line && line.b, ...marks.flatMap((m) => (m.a ? [m.a, m.b] : [m]))].filter(Boolean).map(ll);
-      if (pts.length) map.fitBounds(pts, { maxZoom: 16, padding: [30, 30] });
+      map.fitBounds(courseBounds, { maxZoom: 16, padding: [30, 30] });
     }
   }
   if (courseEl) courseEl.addEventListener('change', () => {
