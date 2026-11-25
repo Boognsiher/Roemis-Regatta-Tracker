@@ -111,6 +111,7 @@
     layer.addTo(map);
   }
   let picking = null;
+  let flDirty = false;   // Ziellinien-Felder wurden geaendert und noch nicht gespeichert (kein Ueberschreiben durch den Auto-Refresh)
   const LABEL = { a: 'Linie A (Startschiff)', b: 'Linie B (Pin)', mark: 'Referenz-Tonne (Kursseite)' };
 
   function drawLine() {
@@ -121,9 +122,13 @@
     if (lineDraft.a && lineDraft.b) {
       L.polyline([[lineDraft.a.lat, lineDraft.a.lon], [lineDraft.b.lat, lineDraft.b.lon]], { color: '#e6194b', weight: 4 }).addTo(layer);
     }
-    if (regatta && regatta.finishLine) {
-      const f = regatta.finishLine;
-      L.polyline([[f.a.lat, f.a.lon], [f.b.lat, f.b.lon]], { color: '#3cb44b', weight: 4 }).bindTooltip('Ziellinie', { permanent: true, direction: 'bottom' }).addTo(layer);
+    // Ziellinie: Entwurf aus den Eingabefeldern (solange nicht gespeichert), sonst die gespeicherte
+    const fa = Coords.parse($('fl-a').value || ''); const fb = Coords.parse($('fl-b').value || ''); const fm = Coords.parse($('fl-mark').value || '');
+    const f = flDirty ? { a: fa, b: fb, mark: fm } : (regatta && regatta.finishLine);
+    if (f) {
+      if (f.a && f.b) L.polyline([[f.a.lat, f.a.lon], [f.b.lat, f.b.lon]], { color: '#3cb44b', weight: 4 }).bindTooltip('Ziellinie', { permanent: true, direction: 'bottom' }).addTo(layer);
+      else [f.a, f.b].filter(Boolean).forEach((q) => L.circleMarker([q.lat, q.lon], { radius: 7, color: '#3cb44b', fillOpacity: 0.8 }).addTo(layer));
+      if (f.mark) L.circleMarker([f.mark.lat, f.mark.lon], { radius: 6, color: '#3cb44b', fillOpacity: 0.3 }).bindTooltip('Referenz Kursseite', { direction: 'top' }).addTo(layer);
     }
     courseDraft.marks.forEach((m, i) => {
       if (m.a) {
@@ -179,6 +184,13 @@
     if (picking === 'course') {
       courseDraft.marks.push({ lat: e.latlng.lat, lon: e.latlng.lng });
       renderCourse(); drawLine();   // Modus bleibt aktiv: weitere Boje setzen, "Boje auf Karte setzen" nochmals klicken beendet ihn
+      return;
+    }
+    if (picking && picking.startsWith('fl-')) {                 // Ziellinie (Langstrecke): Marke A, B oder Referenz per Klick
+      $(picking).value = `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
+      picking = null; flDirty = true;
+      $('fl-msg').textContent = 'Gesetzt. Noch "Ziellinie speichern" druecken.';
+      drawLine();
       return;
     }
     if (!picking) return;
@@ -604,7 +616,7 @@
     const isDist = !!c && c.lapMode === 'distance';
     $('finish-panel').style.display = isDist ? 'block' : 'none';
     $('cs-laps').disabled = isDist;
-    if (!isDist || document.activeElement.closest('#fl-a,#fl-b,#fl-mark')) return;
+    if (!isDist || flDirty || document.activeElement.closest('#fl-a,#fl-b,#fl-mark')) return;
     const f = regatta.finishLine;
     const txt = (p) => (p ? `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}` : '');
     $('fl-a').value = txt(f && f.a); $('fl-b').value = txt(f && f.b); $('fl-mark').value = txt(f && f.mark);
@@ -636,17 +648,24 @@
   $('cs-new-loop').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'loop' }, 'Neuer Rundkurs angelegt - Linie und Bojen eintragen.')));
   $('cs-new-bounce').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'bounce' }, 'Neuer Kurs angelegt - Linie und Bojen eintragen.')));
   $('cs-new-distance').addEventListener('click', guard(() => courseAction('/api/admin/courses', 'POST', { kind: 'distance' }, 'Neue Langstrecke angelegt - Start-Linie, Bojen und (falls getrennt) Ziellinie eintragen.')));
+  ['fl-a', 'fl-b', 'fl-mark'].forEach((id) => $(id).addEventListener('input', () => { flDirty = true; drawLine(); }));
+  document.querySelectorAll('.fl-pick').forEach((btn) => btn.addEventListener('click', () => {
+    picking = btn.dataset.k;
+    $('fl-msg').textContent = `Klick auf die Karte setzt: ${{ 'fl-a': 'Ziellinie Marke A', 'fl-b': 'Ziellinie Marke B', 'fl-mark': 'Referenz Kursseite' }[picking]}.`;
+  }));
   $('fl-save').addEventListener('click', guard(async () => {
     const a = Coords.parse($('fl-a').value); const b = Coords.parse($('fl-b').value);
     const mk = $('fl-mark').value.trim() ? Coords.parse($('fl-mark').value) : null;
     if (!a || !b) { $('fl-msg').textContent = 'Marke A und B als Koordinaten eingeben.'; return; }
     if ($('fl-mark').value.trim() && !mk) { $('fl-msg').textContent = 'Referenz nicht lesbar.'; return; }
     await api('/api/admin/finish-line', 'PUT', mk ? { a, b, mark: mk } : { a, b });
+    flDirty = false;
     $('fl-msg').textContent = 'Ziellinie gespeichert. Gilt fuer neue Wettfahrten bzw. nach "Linie & Kurs aktuell uebernehmen".';
     await load(); renderFinishPanel(); drawLine();
   }));
   $('fl-clear').addEventListener('click', guard(async () => {
     await api('/api/admin/finish-line', 'PUT', { clear: true });
+    flDirty = false;
     $('fl-msg').textContent = 'Ziellinie entfernt: Das Ziel liegt an der Start-Linie.';
     await load(); renderFinishPanel(); drawLine();
   }));
