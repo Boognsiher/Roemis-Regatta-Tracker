@@ -67,12 +67,14 @@
   }));
 
   // ---------- Boote ----------
+  // Noch nicht gespeicherte Eingaben je Tracker: bleiben beim Auto-Refresh und bei jedem Neuaufbau der Liste erhalten.
+  const boatDraft = {};
   function renderBoats() {
     if (!trackers.length) { $('boats').innerHTML = '<p class="hint">Noch keine Tracker angelegt.</p>'; return; }
     const opts = (sel) => '<option value="">–</option>' + regatta.classes
       .map((c) => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.name)} (${c.yardstick})</option>`).join('');
     $('boats').innerHTML = trackers.map((t) => {
-      const b = regatta.boats[t.id] || {};
+      const b = { ...(regatta.boats[t.id] || {}), ...(boatDraft[t.id] || {}) };
       return `<div class="row" data-id="${t.id}">
         <div style="min-width:130px;font-weight:600"><span class="boat-dot" style="display:inline-block;width:10px;height:10px;background:${t.color};margin-right:6px"></span>${esc(t.name)}</div>
         <div class="field"><label>Segelnr.</label><input type="text" class="sail" value="${esc(b.sailNo)}" style="width:90px" /></div>
@@ -84,14 +86,17 @@
     }).join('');
     $('boats').querySelectorAll('.row').forEach((row) => {
       const id = row.dataset.id;
+      const remember = () => { boatDraft[id] = { sailNo: row.querySelector('.sail').value, helm: row.querySelector('.helm').value, classId: row.querySelector('.cls').value }; };
+      row.querySelectorAll('input,select').forEach((el) => { el.addEventListener('input', remember); el.addEventListener('change', remember); });
       row.querySelector('.save').addEventListener('click', guard(async () => {
         await api(`/api/admin/trackers/${id}/registration`, 'PUT', {
           sailNo: row.querySelector('.sail').value, helm: row.querySelector('.helm').value, classId: row.querySelector('.cls').value
         });
+        delete boatDraft[id];
         await load();
       }));
       const un = row.querySelector('.unreg');
-      if (un) un.addEventListener('click', guard(async () => { await api(`/api/admin/trackers/${id}/registration`, 'DELETE'); await load(); }));
+      if (un) un.addEventListener('click', guard(async () => { await api(`/api/admin/trackers/${id}/registration`, 'DELETE'); delete boatDraft[id]; await load(); }));
     });
   }
 
@@ -722,5 +727,7 @@
   let firstLoad = true;
   load().then(() => { loadDrafts(); firstLoad = false; }).catch((e) => alert(e.message));
   // Auto-Refresh der Ergebnisse (nicht waehrend ein Korrektur-Formular offen ist)
-  setInterval(() => { if (!firstLoad && !openRows.size && !document.activeElement.closest('#races')) load().catch(() => {}); }, 10000);
+  // Kein Auto-Refresh, solange in ein Feld getippt wird (Fokus in Eingabefeld/Auswahl) oder ungespeicherte Boots-Eingaben existieren.
+  const typing = () => { const a = document.activeElement; return !!a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName); };
+  setInterval(() => { if (!firstLoad && !openRows.size && !typing() && !Object.keys(boatDraft).length && !document.activeElement.closest('#races')) load().catch(() => {}); }, 10000);
 })();
