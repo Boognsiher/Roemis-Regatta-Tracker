@@ -389,7 +389,7 @@
   $('race-create').addEventListener('click', guard(async () => {
     const startTs = fromLocalInput($('race-start').value);
     await api('/api/admin/races', 'POST', {
-      name: $('race-name').value, courseId: $('race-course').value || undefined, laps: $('race-laps').value, cutoffMinutes: $('race-cutoff').value, lapMode: $('race-mode').value, startOnExtension: $('race-ext').checked, startTs: startTs || undefined
+      name: $('race-name').value, courseId: $('race-course').value || undefined, laps: $('race-laps').value, cutoffMinutes: $('race-cutoff').value, lapMode: $('race-mode').value, startOnExtension: $('race-ext').checked, auto: $('race-auto').checked, startTs: $('race-auto').checked ? undefined : (startTs || undefined)
     });
     $('race-name').value = '';
     $('race-start').value = '';
@@ -398,6 +398,13 @@
 
   let results = {};
   const openRows = new Set(); // aufgeklappte Korrektur-Formulare bleiben beim Auto-Refresh offen
+
+  const PHASE = { WAIT: 'wartet auf Start', STARTING: 'Start erkannt (noch nicht endgueltig)', RACING: 'laeuft', DONE: 'beendet' };
+  /** Automatisch erkannte Startzeit und Ende je Klasse (aus dem Spielstand der Wettfahrt). */
+  function autoClassRows(r) {
+    const rows = (r.classes || []).map((c) => `<div class="hint">${esc(c.name)}: ${esc(PHASE[c.phase] || c.phase)}${c.startTs ? ` · Start ${fmtClock(c.startTs)} (${c.startBoats} Boot${c.startBoats === 1 ? '' : 'e'} im Pulk${c.early ? `, ${c.early} frueher gequert` : ''})` : ''}${c.endTs ? ` · Ende ${fmtClock(c.endTs)} (${esc(c.endReason)})` : ''}</div>`);
+    return rows.join('') || '<div class="hint">Keine Boote registriert.</div>';
+  }
 
   function raceCard(r) {
     const res = results[r.id];
@@ -408,8 +415,10 @@
         <span class="badge">${r.laps} Runden</span>
         ${r.courseName ? `<span class="badge">${esc(r.courseName)}</span>` : ''}
         ${r.official ? '<span class="badge official">OFFIZIELL</span>' : '<span class="badge warn">vorlaeufig</span>'}
-        ${started ? `<span class="badge">Start ${fmtClock(r.startTs)}</span>` : '<span class="badge">nicht gestartet</span>'}
-      </div>`;
+        ${r.auto ? '<span class="badge">automatischer Start</span>' : ''}
+        ${started ? `<span class="badge">Start ${fmtClock(r.startTs)}</span>` : `<span class="badge">${r.auto ? 'wartet auf Start' : 'nicht gestartet'}</span>`}
+      </div>
+      ${r.auto ? autoClassRows(r) : ''}`;
     const controls = r.official ? '' : `
       <div class="row">
         <button class="start-now">Startsignal JETZT</button>
@@ -529,7 +538,7 @@
     trackers = tr.trackers;
     regatta = rg;
     results = {};
-    await Promise.all(regatta.races.filter((r) => r.startTs != null).map(async (r) => {
+    await Promise.all(regatta.races.filter((r) => r.startTs != null || r.auto).map(async (r) => {
       results[r.id] = await api(`/api/races/${r.id}/results`);
     }));
     renderClasses(); renderBoats(); renderRaces(); renderCourseSelect(); renderFinishPanel();

@@ -352,7 +352,7 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
       const nFinish = out.filter((o) => o.dir === 'finish').length;
       extra.push(`${out.length} Durchgang/Durchgaenge ausserhalb der Linien-Marken (nur ${Math.round(nearest)} m daneben${nFinish ? `, davon ${nFinish} beim Zieldurchgang, der zwischen den Marken liegen muss` : ''}) - Linie zu kurz oder Boot ausserhalb der Marken?`);
     }
-    return { status: 'DNF', laps, finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: warnings.concat(extra), lapInfo };
+    return { status: 'DNF', laps, finishTs: null, elapsedSec: null, uncertaintyMs: null, warnings: warnings.concat(extra), lapInfo, startCrossingTs };
   }
 
   const fin = laps[laps.length - 1];
@@ -366,6 +366,7 @@ function analyzeBoat(pl, fixesRaw, { startTs, laps: totalLaps, minLapSeconds, en
     elapsedSec: (fin.ts - startTs) / 1000,
     uncertaintyMs: fin.uncertaintyMs,
     warnings,
+    startCrossingTs,
     lapInfo: { ...lapInfo, current: totalLaps }
   };
 }

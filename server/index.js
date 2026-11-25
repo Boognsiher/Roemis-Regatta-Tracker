@@ -489,6 +489,9 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 
 // ---------- HTTP + WebSocket Server ----------
 
+// Automatische Wettfahrten: Start und Ende der Klassen regelmaessig erkennen (auch wenn niemand die Seite offen hat)
+setInterval(() => { try { regatta.tickAuto(); } catch (e) { console.error('Auto-Erkennung:', e.message); } }, 10000).unref();
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({
   server,
