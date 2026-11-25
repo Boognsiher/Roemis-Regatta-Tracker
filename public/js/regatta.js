@@ -126,7 +126,7 @@
         [m.a, m.b].forEach((q, j) => L.circleMarker([q.lat, q.lon], { radius: 7, color: '#f58231', fillOpacity: 0.8 })
           .bindTooltip(j === 0 ? `Tor ${i + 1}` : 'B', { permanent: j === 0, direction: 'top' }).addTo(layer));
       } else {
-        L.circleMarker([m.lat, m.lon], { radius: 9, color: '#f58231', fillOpacity: 0.7 }).bindTooltip(`Boje ${i + 1}${courseDraft.exact ? '' : ' (grob)'}`, { permanent: true, direction: 'top' }).addTo(layer);
+        L.circleMarker([m.lat, m.lon], { radius: 9, color: '#f58231', fillOpacity: 0.7 }).bindTooltip(`Boje ${i + 1}${m.rounding === 'port' ? ' (Backbord)' : m.rounding === 'starboard' ? ' (Steuerbord)' : ''}${courseDraft.exact ? '' : ' (grob)'}`, { permanent: true, direction: 'top' }).addTo(layer);
       }
     });
     const centers = courseDraft.marks.map((m) => (m.a ? { lat: (m.a.lat + m.b.lat) / 2, lon: (m.a.lon + m.b.lon) / 2 } : m));
@@ -203,6 +203,11 @@
         <div class="row" data-i="${i}">
           <div style="min-width:70px"><b>Boje ${i + 1}</b></div>
           <input type="text" class="coord course-c" value="${esc(Coords.format(m))}" style="min-width:250px;flex:1" />
+          <select class="mark-rounding" style="width:auto" title="Auf welcher Seite die Boje gelassen werden muss (Langstrecke: wird geprueft, Abweichung = Warnung)">
+            <option value="" ${m.rounding ? '' : 'selected'}>Seite: beliebig</option>
+            <option value="port" ${m.rounding === 'port' ? 'selected' : ''}>an Backbord lassen (gegen den Uhrzeigersinn)</option>
+            <option value="starboard" ${m.rounding === 'starboard' ? 'selected' : ''}>an Steuerbord lassen (im Uhrzeigersinn)</option>
+          </select>
           ${ctl(i)}
           <span class="hint">${esc(Coords.formatDM(m))}</span>
         </div>`)).join('')
@@ -215,9 +220,14 @@
         single.addEventListener('change', () => {
           const c = Coords.parse(single.value);
           if (!c) return bad(single, `Boje ${i + 1}`);
-          courseDraft.marks[i] = c; courseDraft.exact = true;
+          courseDraft.marks[i] = courseDraft.marks[i].rounding ? { ...c, rounding: courseDraft.marks[i].rounding } : c; courseDraft.exact = true;
           $('course-msg').textContent = '';
           renderCourse(); drawLine();
+        });
+        row.querySelector('.mark-rounding').addEventListener('change', (e) => {
+          const { rounding, ...rest } = courseDraft.marks[i];
+          courseDraft.marks[i] = e.target.value ? { ...rest, rounding: e.target.value } : rest;
+          drawLine();
         });
       }
       row.querySelectorAll('.gate-c').forEach((input) => {
@@ -270,8 +280,10 @@
         const [pa, pb] = line.split('|').map((x) => Coords.parse(x));
         if (pa && pb) marks.push({ a: pa, b: pb }); else errors.push(i + 1);
       } else {
-        const c = Coords.parse(line);
-        if (c) marks.push(c); else errors.push(i + 1);
+        // Umrundungsrichtung am Zeilenende: "@P" = an Backbord lassen, "@S" = an Steuerbord lassen
+        const m = line.match(/\s*@([PS])\s*$/i);
+        const c = Coords.parse(m ? line.slice(0, m.index) : line);
+        if (c) marks.push(m ? { ...c, rounding: m[1].toUpperCase() === 'P' ? 'port' : 'starboard' } : c); else errors.push(i + 1);
       }
     });
     if (errors.length) { $('course-msg').textContent = `Zeile(n) nicht lesbar: ${errors.join(', ')}`; return; }
@@ -457,7 +469,7 @@
         <button class="ov-save">Speichern</button></div></td></tr>` : '';
     return `<tr>
       <td class="num"><b>${e.rank ?? ''}</b></td>
-      <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? ' ✓' : ' ✗'}`).join(' · ')}</div>` : ''}${warn}${note}</td>
+      <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? (m.wrongSide ? ' ⚠' : ' ✓') : ' ✗'}`).join(' · ')}</div>` : ''}${warn}${note}</td>
       <td>${esc(e.className)} / ${e.yardstick}</td>
       <td><span class="badge">${e.status}</span></td>
       <td class="num hint">${lapTxt}</td>
