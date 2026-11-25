@@ -295,7 +295,11 @@
     } catch (err) { return; }
     courseBounds = [];
     const live = reg.liveCourse;                   // nur der von der Wettfahrtleitung aufgeschaltete Kurs
-    if (!live) return;
+    const statusEl = document.getElementById('course-status');
+    const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
+    if (!live) { setStatus('Kein Kurs aufgeschaltet (die Wettfahrtleitung schaltet ihn auf).'); return; }
+    if (!(live.line && live.line.a) && !(live.marks && live.marks.length)) { setStatus(`Kurs "${live.name}" ist aufgeschaltet, hat aber noch keine Linie und keine Bojen.`); return; }
+    setStatus(`Aufgeschaltet: ${live.name} (${live.line ? 'Linie' : 'ohne Linie'}, ${(live.marks || []).length} Boje(n)/Tor(e))`);
     const ll = (q) => [q.lat, q.lon];
     const line = live.line;
     if (line && line.a && line.b) {
