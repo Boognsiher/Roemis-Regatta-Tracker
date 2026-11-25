@@ -10,8 +10,10 @@
   const boatListEl = document.getElementById('boat-list');
   const MAX_CLIENT_TRAIL = 600; // so viele Spurpunkte pro Boot haelt der Browser hoechstens
 
-  /** id -> { marker, line, data } */
+  /** id -> { marker, line, data, trail, full } ; full = ganze Spur aus der Historie (nur im Modus "Ganze Spur anzeigen") */
   const boats = new Map();
+  const MAX_FULL_TRAIL = 20000;   // Obergrenze, falls der Browser lange offen bleibt und live weitere Punkte anhaengt
+  let fullTrack = false;
   let hasFitOnce = false;
 
   function fmtAge(ts) {
@@ -47,7 +49,7 @@
     let entry = boats.get(t.id);
 
     if (!entry) {
-      entry = { marker: null, line: null, data: t, trail: [] };
+      entry = { marker: null, line: null, data: t, trail: [], full: null, fullInfo: null };
       boats.set(t.id, entry);
     }
     entry.data = t;
@@ -81,7 +83,15 @@
       if ((!last || latest.ts > last.ts) && !still) entry.trail.push(latest);
       if (entry.trail.length > MAX_CLIENT_TRAIL) entry.trail.splice(0, entry.trail.length - MAX_CLIENT_TRAIL);
     }
-    entry.line.setLatLngs(entry.trail.map((p) => [p.lat, p.lon]));
+    if (fullTrack) {
+      if (!entry.full) loadFullTrack(entry);
+      else {
+        const lastF = entry.full[entry.full.length - 1];
+        if (!lastF || latest.ts > lastF.ts) entry.full.push(latest);
+        if (entry.full.length > MAX_FULL_TRAIL) entry.full.splice(0, entry.full.length - MAX_FULL_TRAIL);
+      }
+    }
+    redrawLine(entry);
 
     if (!hasFitOnce) {
       hasFitOnce = true;
@@ -90,6 +100,60 @@
 
     renderList();
   }
+
+  // ---- Ganze Spur aus der Historie (zum Testen, 17.11.2026) ----
+  const fullTrackEl = document.getElementById('full-track');
+  const trackRangeEl = document.getElementById('track-range');
+  const trackInfoEl = document.getElementById('track-info');
+
+  function redrawLine(entry) {
+    if (!entry.line) return;
+    const pts = fullTrack && entry.full ? entry.full : entry.trail;
+    entry.line.setLatLngs(pts.map((p) => [p.lat, p.lon]));
+  }
+
+  function fmtClock(ts) {
+    return new Date(ts).toLocaleString('de-CH', { hour12: false, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderTrackInfo() {
+    if (!trackInfoEl) return;
+    if (!fullTrack) { trackInfoEl.textContent = ''; return; }
+    const lines = [];
+    for (const entry of boats.values()) {
+      const i = entry.fullInfo;
+      if (!i) { lines.push(`${entry.data.name}: laedt ...`); continue; }
+      lines.push(i.total ? `${entry.data.name}: ${i.total} Punkte, ${fmtClock(i.from)} bis ${fmtClock(i.to)}${i.shown < i.total ? ` (angezeigt ${i.shown})` : ''}` : `${entry.data.name}: keine Daten`);
+    }
+    trackInfoEl.innerHTML = lines.map((l) => l.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))).join('<br>');
+  }
+
+  async function loadFullTrack(entry) {
+    entry.fullInfo = null;
+    try {
+      const res = await fetch(`/api/trackers/${encodeURIComponent(entry.data.id)}/track?mode=${trackRangeEl.value}&hours=24&max=3000`);
+      if (res.status === 401) { location.replace('/login.html?next=/index.html'); return; }
+      const data = await res.json();
+      if (!fullTrack) return;   // zwischenzeitlich wieder ausgeschaltet
+      entry.full = data.points || [];
+      entry.fullInfo = { total: data.total, shown: data.shown, from: data.from, to: data.to };
+      redrawLine(entry);
+    } catch (err) {
+      console.error('Ganze Spur nicht geladen', err);
+      entry.full = null;
+    }
+    renderTrackInfo();
+  }
+
+  async function applyFullTrackMode() {
+    fullTrack = !!(fullTrackEl && fullTrackEl.checked);
+    for (const entry of boats.values()) entry.full = null;
+    if (!fullTrack) { for (const entry of boats.values()) redrawLine(entry); renderTrackInfo(); return; }
+    renderTrackInfo();
+    await Promise.all([...boats.values()].map(loadFullTrack));
+  }
+  if (fullTrackEl) fullTrackEl.addEventListener('change', applyFullTrackMode);
+  if (trackRangeEl) trackRangeEl.addEventListener('change', () => { if (fullTrack) applyFullTrackMode(); });
 
   function removeBoat(id) {
     const entry = boats.get(id);

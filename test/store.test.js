@@ -98,3 +98,24 @@ test('Lebenszeichen speichert GPS-Zustand, onlineMap zaehlt Tracker ohne Positio
   store.recordStatus(t.id, { ts: Date.now(), gpsState: 7, sats: 999 });   // ungueltig -> null
   assert.strictEqual(store.getPublicTracker(t.id).status.gpsState, null);
 });
+
+test('getTrack: letzte Fahrt (Pause > 30 min), Stunden-Fenster, alles, Ausduennung', () => {
+  const t = store.createTracker('Spur');
+  const now = Date.now();
+  // alte Fahrt vor 5 h (100 Punkte), 4 h Pause, neue Fahrt vor 1 h (400 Punkte, jede Sekunde, mit Tempo)
+  for (let i = 0; i < 100; i += 1) store.recordPosition(t.id, { lat: 47 + i * 1e-5, lon: 10, ts: now - 5 * 3600e3 + i * 1000, speed: 3 });
+  for (let i = 0; i < 400; i += 1) store.recordPosition(t.id, { lat: 47.1 + i * 1e-5, lon: 10, ts: now - 3600e3 + i * 1000, speed: 3 });
+  let seg = store.getTrack(t.id, { mode: 'segment' });
+  assert.strictEqual(seg.total, 400);
+  assert.ok(Math.abs(seg.from - (now - 3600e3)) < 1);
+  assert.strictEqual(seg.points.length, 400);
+  assert.strictEqual(store.getTrack(t.id, { mode: 'all' }).total, 500);
+  assert.strictEqual(store.getTrack(t.id, { mode: 'hours', hours: 2 }).total, 400);
+  assert.strictEqual(store.getTrack(t.id, { mode: 'hours', hours: 6 }).total, 500);
+  const dec = store.getTrack(t.id, { mode: 'all', max: 50 });
+  assert.strictEqual(dec.points.length, 50);
+  assert.strictEqual(dec.points[0].ts, now - 5 * 3600e3);                  // erster Punkt bleibt
+  assert.strictEqual(dec.points[49].ts, now - 3600e3 + 399 * 1000);       // letzter Punkt bleibt
+  assert.strictEqual(store.getTrack('gibtsnicht', {}), null);
+  assert.strictEqual(store.getTrack(store.createTracker('Leer').id, {}).total, 0);
+});

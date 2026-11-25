@@ -56,6 +56,12 @@ ADMIN_TOKEN=mein-geheimes-token npm start
    sein, da die Position ueber das Internet an den Server gesendet wird.
 5. Auf der Live-Karte (`/`) erscheint das Boot automatisch, sobald die erste Position eintrifft.
 
+**Ganze Spur auf der Karte (Testfunktion):** Die Live-Karte haelt pro Boot nur die letzten `MAX_TRAIL_POINTS` Punkte (Standard 1000, in der
+`docker-compose.yml`), und beim Oeffnen kommen davon nur `PUBLIC_TRAIL_POINTS` (150) ausgeduennte an. Mit dem Haken **"Ganze Spur anzeigen"** oberhalb der
+Bootliste laedt der Browser die Strecke aus der vollstaendigen Aufzeichnung: "letzte Fahrt" (ab der letzten Pause von mehr als 30 min), "letzte 24 Stunden"
+oder "alles", auf hoechstens 3000 Punkte ausgeduennt (`GET /api/trackers/<id>/track?mode=segment|hours|all&max=3000`). Neue Live-Punkte werden angehaengt.
+Die Aufzeichnung selbst ist immer vollstaendig; fuer den Dauerbetrieb mit vielen Zuschauern ist die Funktion noch nicht ausgelegt (Abfrage liest die ganze Historie).
+
 ## Zeitmessung und Yardstick-Auswertung
 
 Seiten: **Wettfahrtleitung** `/regatta.html` (Admin-Login wie `/admin.html`), oeffentliche Ergebnisse `/results.html`.
