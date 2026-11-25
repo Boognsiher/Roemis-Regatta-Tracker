@@ -139,6 +139,10 @@
         L.circleMarker([m.lat, m.lon], { radius: 9, color: '#f58231', fillOpacity: 0.7 }).bindTooltip(`Boje ${i + 1}${m.rounding === 'port' ? ' (Backbord)' : m.rounding === 'starboard' ? ' (Steuerbord)' : ''}${courseDraft.exact ? '' : ' (grob)'}`, { permanent: true, direction: 'top' }).addTo(layer);
       }
     });
+    // Entwurf eines Tors (Eingabefelder, noch nicht hinzugefuegt)
+    const ga = Coords.parse($('gate-a').value || ''); const gb = Coords.parse($('gate-b').value || '');
+    [ga, gb].filter(Boolean).forEach((q) => L.circleMarker([q.lat, q.lon], { radius: 7, color: '#f58231', dashArray: '3 3', fillOpacity: 0.2 }).addTo(layer));
+    if (ga && gb) L.polyline([[ga.lat, ga.lon], [gb.lat, gb.lon]], { color: '#f58231', weight: 3, dashArray: '6 6' }).bindTooltip('Tor (Entwurf)', { direction: 'top' }).addTo(layer);
     const centers = courseDraft.marks.map((m) => (m.a ? { lat: (m.a.lat + m.b.lat) / 2, lon: (m.a.lon + m.b.lon) / 2 } : m));
     if (centers.length > 1) {
       L.polyline(centers.map((m) => [m.lat, m.lon]), { color: '#f58231', weight: 2, dashArray: '6 6' }).addTo(layer);
@@ -184,6 +188,14 @@
     if (picking === 'course') {
       courseDraft.marks.push({ lat: e.latlng.lat, lon: e.latlng.lng });
       renderCourse(); drawLine();   // Modus bleibt aktiv: weitere Boje setzen, "Boje auf Karte setzen" nochmals klicken beendet ihn
+      return;
+    }
+    if (picking && picking.startsWith('gate-')) {               // Tor als Bahnmarke: Marke A oder B per Klick
+      $(picking).value = `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
+      const next = picking === 'gate-a' ? 'gate-b' : null;     // nach A gleich B anbieten
+      picking = next;
+      $('course-msg').textContent = next ? 'A gesetzt - jetzt Marke B auf die Karte klicken.' : 'Beide Marken gesetzt - "Tor hinzufuegen" druecken.';
+      drawLine();
       return;
     }
     if (picking && picking.startsWith('fl-')) {                 // Ziellinie (Langstrecke): Marke A, B oder Referenz per Klick
@@ -266,6 +278,11 @@
     const found = detectedMarks.filter((m) => !m.approx && !m.exact);
     $('course-adopt').style.display = found.length && found.length === n && !courseDraft.marks.some((m) => m.a) ? '' : 'none';
   }
+  ['gate-a', 'gate-b'].forEach((id) => $(id).addEventListener('input', () => drawLine()));
+  document.querySelectorAll('.gate-pick').forEach((btn) => btn.addEventListener('click', () => {
+    picking = btn.dataset.k;
+    $('course-msg').textContent = `Klick auf die Karte setzt: Tor Marke ${picking === 'gate-a' ? 'A' : 'B'}.`;
+  }));
   $('gate-add').addEventListener('click', () => {
     const a = Coords.parse($('gate-a').value);
     const b = Coords.parse($('gate-b').value);
