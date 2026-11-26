@@ -11,6 +11,7 @@
 #define GPS_STATE_SILENT  0   // GPS-Modul liefert keine Daten (Verdrahtung/Strom/Modul defekt)
 #define GPS_STATE_NOSATS  1   // Daten kommen, aber keine Satelliten gesehen
 #define GPS_STATE_SEARCH  2   // Satelliten sichtbar, noch kein Fix
+#define GPS_STATE_TIME    3   // Fix vorhanden, aber die GPS-Zeit ist noch nicht auf UTC abgeglichen (Schaltsekunden fehlen): Positionen werden zurueckgehalten
 
 struct __attribute__((packed)) TrackerPacket {
   uint8_t  magic;       // PKT_MAGIC

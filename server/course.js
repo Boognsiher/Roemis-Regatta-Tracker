@@ -332,6 +332,18 @@ function liveRanking({ line, race, approxMarks, boats, now, options = {} }) {
       e.marksDone = done;
       e.progressM = progressMeters(geo, lap, done, last);
       e.elapsedSec = (last.t - race.startTs) / 1000;
+      // Details fuer die Anzeige (Klick auf ein Boot): Position, Kurs, naechstes Ziel (Boje/Tor/Ziel), Abstand, Peilung und VMG dorthin
+      const ll = pl.unproj(last);
+      e.pos = { lat: ll.lat, lon: ll.lon };
+      let ia = pts.length - 2;
+      while (ia > 0 && last.t - pts[ia].t < 10000) ia -= 1;
+      const moved = ia >= 0 && dist(pts[ia], last) > 8;
+      e.headingDeg = moved ? Math.round(bearing(pts[ia], last)) : null;
+      const kNext = clamp(done, 0, geo.legLen.length - 1);
+      const target = geo.nodes[kNext + 1];
+      const isFinish = kNext + 1 >= geo.nodes.length - 1;
+      e.nextMark = { label: isFinish ? 'Ziel' : (det.marksXY[kNext] && det.marksXY[kNext].gate ? `Tor ${kNext + 1}` : `Boje ${kNext + 1}`), distM: Math.round(dist(last, target)), bearingDeg: Math.round(bearing(last, target)) };
+      if (e.speedKn != null && e.headingDeg != null) e.vmgKn = Math.round(e.speedKn * Math.cos((angDiff(e.headingDeg, e.nextMark.bearingDeg) * Math.PI) / 180) * 10) / 10;
       const frac = geo.totalLen > 0 ? e.progressM / geo.totalLen : 0;
       if (frac >= o.minProgressFrac && e.elapsedSec >= o.minElapsedS) {
         e.projectedCorrectedSec = timing.correctedSeconds((e.elapsedSec * geo.totalLen) / e.progressM, b.yardstick);
@@ -356,9 +368,37 @@ function liveRanking({ line, race, approxMarks, boats, now, options = {} }) {
     out.foremostId = front.trackerId;
     withData.forEach((e) => { e.gapM = front.progressM - e.progressM; });
   }
+  addNeighbors(entries);
   entries.sort((a, b) => (a.rank ?? 1e6) - (b.rank ?? 1e6) || b.progressM - a.progressM || a.name.localeCompare(b.name, 'de'));
   out.entries = entries;
   return out;
+}
+
+/**
+ * Nachbarn je Boot: das Boot direkt davor und dahinter nach Fortschritt auf dem Kurs (Abstand laengs der Bahn und Luftlinie) sowie in der Rangliste
+ * (Abstand in berechneter Zeit zum Vorderen/Hinteren). Auch fuer zusammengefuehrte Klassen-Listen aufrufbar.
+ */
+function addNeighbors(entries) {
+  const dm = (a, b) => {
+    const k = Math.cos((a.lat * Math.PI) / 180);
+    return Math.round(Math.hypot((b.lat - a.lat) * 111320, (b.lon - a.lon) * 111320 * k));
+  };
+  const racing = entries.filter((e) => e.pos && (e.status === 'RACING'));
+  const byProgress = racing.slice().sort((a, b) => b.progressM - a.progressM);
+  byProgress.forEach((e, i) => {
+    const ahead = byProgress[i - 1];
+    const behind = byProgress[i + 1];
+    e.ahead = ahead ? { name: [ahead.sailNo, ahead.name].filter(Boolean).join(' '), courseM: Math.round(ahead.progressM - e.progressM), directM: dm(e.pos, ahead.pos) } : null;
+    e.behind = behind ? { name: [behind.sailNo, behind.name].filter(Boolean).join(' '), courseM: Math.round(e.progressM - behind.progressM), directM: dm(e.pos, behind.pos) } : null;
+  });
+  const ranked = entries.filter((e) => e.rank != null).sort((a, b) => a.rank - b.rank);
+  ranked.forEach((e, i) => {
+    const up = ranked[i - 1];
+    const down = ranked[i + 1];
+    const t = (x) => (x.status === 'FIN' ? x.correctedSec : x.projectedCorrectedSec);
+    e.rankAhead = up ? { name: [up.sailNo, up.name].filter(Boolean).join(' '), gapSec: Math.round(t(e) - t(up)) } : null;
+    e.rankBehind = down ? { name: [down.sailNo, down.name].filter(Boolean).join(' '), gapSec: Math.round(t(down) - t(e)) } : null;
+  });
 }
 
 /**
@@ -403,5 +443,5 @@ function checkMarks({ pl, fixes, approxMarks, startPassTs, endTs = null, options
 
 module.exports = {
   checkMarks,
-  DEFAULTS, gateCrossing, detectRoundings, findApex, refineMarks, detectCourse, courseGeometry, progressMeters, liveRanking, analyzeBoatCourse
+  DEFAULTS, addNeighbors, gateCrossing, detectRoundings, findApex, refineMarks, detectCourse, courseGeometry, progressMeters, liveRanking, analyzeBoatCourse
 };

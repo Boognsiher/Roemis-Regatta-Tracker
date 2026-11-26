@@ -27,6 +27,7 @@
 #include "logupload.h"
 #include "display.h"
 #include "trackerled.h"
+#include "gpstime.h"
 
 // Jeder Tracker hat ein festes Sendefenster (TRACKER_ID-1)*SLOT_MS im Zyklus. Eine groessere Nr. wuerde auf das Fenster eines anderen fallen.
 static_assert(TRACKER_ID >= 1 && TRACKER_ID <= CYCLE_MS / SLOT_MS,
@@ -94,6 +95,7 @@ uint16_t gpsStatusWord() {
   lastChars = chars;
   int sats = gps.satellites.isValid() ? (int)gps.satellites.value() : 0;
   uint8_t state = silent ? GPS_STATE_SILENT : (sats > 0 ? GPS_STATE_SEARCH : GPS_STATE_NOSATS);
+  if (!silent && sats > 0 && gps.location.isValid() && !gpsTimeTrusted()) state = GPS_STATE_TIME;   // Fix da, aber Zeit noch nicht verlaesslich
   return (uint16_t)((state << 8) | (sats > 255 ? 255 : sats));
 }
 
@@ -147,6 +149,7 @@ void handleSerial() {
                     txCount, (unsigned)logupEntries(), (unsigned)logupUploaded(),
                     b < 0 ? "?" : "", b < 0 ? 0 : (int)lround(b * 100),
                     HOTSPOT_UPLOAD ? upStateText() : "Upload aus");
+      Serial.printf("GPS-Zeit: %s\n", gpsTimeText());
       Serial.printf("LoRa %s | Lebenszeichen gesendet %u, Band belegt %u | GPS-Zeichen %u, Pruefsummenfehler %u\n", loraOk ? "ok" : "AUS",
                     hbSent, hbBusy, (unsigned)gps.charsProcessed(), (unsigned)gps.failedChecksum());
       float chipT = boardChipTempC();
@@ -201,11 +204,12 @@ void setup() {
 }
 
 void loop() {
-  while (GPSSerial.available()) gps.encode(GPSSerial.read());
+  gpsPump(GPSSerial, gps);   // NMEA an TinyGPS, nebenbei UBX-NAV-TIMEGPS (Schaltsekunden bekannt?)
 
   // Ein RMC-Satz (enthaelt Datum) ist abgeschlossen: Zeitanker + Position uebernehmen.
   if (gps.date.isUpdated() && gps.time.isUpdated()) {
-    if (gps.date.isValid() && gps.time.isValid() && gps.location.isValid() && gps.date.year() >= 2024) {
+    // Positionen nur mit verlaesslicher UTC-Zeit: nach einem Kaltstart ist die Zeit des Moduls bis ca. 12 min um einige Sekunden falsch (siehe ubxtime.h)
+    if (gps.date.isValid() && gps.time.isValid() && gps.location.isValid() && gps.date.year() >= 2024 && gpsTimeTrusted()) {
       uint64_t epochMs =
           (uint64_t)(daysFromCivil(gps.date.year(), gps.date.month(), gps.date.day()) * 86400LL +
                      gps.time.hour() * 3600 + gps.time.minute() * 60 + gps.time.second()) * 1000ULL +

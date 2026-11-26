@@ -54,7 +54,7 @@
     if (!fix) {
       const w = v.getUint16(15, true);
       out.speed = 0;
-      out.gpsState = w >> 8;     // 0 stumm, 1 keine Satelliten, 2 Suche
+      out.gpsState = w >> 8;     // 0 stumm, 1 keine Satelliten, 2 Suche, 3 Fix da, aber GPS-Zeit noch nicht verlaesslich
       out.sats = w & 0xFF;
     }
     if (u8.length >= 24) {

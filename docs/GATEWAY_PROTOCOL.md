@@ -53,6 +53,7 @@ Content-Type: application/json
 - Lebenszeichen ohne Fix: `{ "id": 2, "fix": false, "seenTs": <Empfangszeit des Handys in ms>, "battery": 0.82, "rssi": -90, "snr": 6.5, "gpsState": 2, "sats": 4 }`.
   Der Server laesst die Position unveraendert (eine fruehere bleibt stehen, ohne fruehere wird keine angezeigt, nichts kommt in die
   Historie) und merkt sich nur Status (Akku, Empfang, zuletzt gehoert). Die Antwort enthaelt dann `heartbeats` statt `accepted`.
+- `gpsState`: 0 GPS stumm, 1 keine Satelliten, 2 Suche, 3 Fix da, aber die GPS-Zeit ist noch nicht auf UTC abgeglichen (u-blox NEO-6M nach Kaltstart: Schaltsekunden fehlen bis ca. 12 min, Zeit sonst um einige Sekunden falsch). Der Tracker sendet dann bewusst keine Position, nur dieses Lebenszeichen.
 - `id` = LoRa-Nr aus dem Paket. Sie muss im Admin einem Tracker zugewiesen sein, sonst steht sie in der Antwort unter `unknown`.
 - Statt `id` kann `trackerId` (Tracker-ID aus dem Admin) gesendet werden, z.B. fuer die eigene Handy-GPS-Position.
 - Optionale Felder: `speed` (m/s), `heading` (Grad), `battery` (0..1), `accuracy` (m), alles sonst weglassen oder `null`.

@@ -18,6 +18,7 @@
 #include "logupload.h"
 #include "display.h"
 #include "trackerled.h"
+#include "gpstime.h"
 
 TinyGPSPlus gps;
 HardwareSerial GPSSerial(1);
@@ -42,6 +43,7 @@ static void handleSerial() {
       Serial.printf("ID %d | Sat %d | Eintraege im Log %u | hochgeladen %u | Fix %s | %s\n", TRACKER_ID,
                     gps.satellites.isValid() ? (int)gps.satellites.value() : -1, (unsigned)logupEntries(),
                     (unsigned)logupUploaded(), gps.location.isValid() ? "ja" : "nein", upStateText());
+      Serial.printf("GPS-Zeit: %s\n", gpsTimeText());
       float chipT = boardChipTempC();
       Serial.printf("Chip %.0f Grad C%s (ESP32-Fuehler, nicht der Akku)\n", chipT, chipTempWarn(chipT));
     }
@@ -75,11 +77,12 @@ void setup() {
 }
 
 void loop() {
-  while (GPSSerial.available()) gps.encode(GPSSerial.read());
+  gpsPump(GPSSerial, gps);   // NMEA an TinyGPS, nebenbei UBX-NAV-TIMEGPS (Schaltsekunden bekannt?)
 
   // RMC-Satz abgeschlossen (enthaelt Datum + Zeit + Position): Eintrag aufzeichnen.
   if (gps.date.isUpdated() && gps.time.isUpdated()) {
-    if (gps.date.isValid() && gps.time.isValid() && gps.location.isValid() && gps.date.year() >= 2024) {
+    // Nur mit verlaesslicher UTC-Zeit aufzeichnen (nach Kaltstart ist die Modulzeit bis ca. 12 min um einige Sekunden falsch, siehe ubxtime.h)
+    if (gps.date.isValid() && gps.time.isValid() && gps.location.isValid() && gps.date.year() >= 2024 && gpsTimeTrusted()) {
       uint64_t epochMs =
           (uint64_t)(daysFromCivil(gps.date.year(), gps.date.month(), gps.date.day()) * 86400LL +
                      gps.time.hour() * 3600 + gps.time.minute() * 60 + gps.time.second()) * 1000ULL +

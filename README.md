@@ -314,6 +314,10 @@ Einmalig `scripts/update-nas.sh` in den Projektordner des NAS legen (wie `server
 
 Ist das Repository privat, legt man ein GitHub-Token mit reinem Lese-Recht (Contents: Read) in die Datei `.github-token` im Projektordner (wird nie hochgeladen, steht in `.gitignore`).
 
+### GPS-Zeit nach dem Einschalten (u-blox NEO-6M)
+
+Messungen vom 25./26.11.: Direkt nach einem Kaltstart war die Zeit des GPS-Moduls (NMEA) bis ca. 12 Minuten lang um genau 3 Sekunden falsch, obwohl die Position stimmte (das Modul kennt die Schaltsekunden noch nicht). Bei einer Regatta zaehlen Sekunden. Die Firmware liest deshalb die u-blox-Meldung `UBX-NAV-TIMEGPS` mit (`firmware/include/ubxtime.h`, `gpstime.h`) und sendet/zeichnet **keine Position auf, solange `leapSValid` fehlt**. Der Tracker sendet dann nur ein Lebenszeichen mit GPS-Zustand 3 (Dashboard: "Fix da, GPS-Zeit wird noch abgeglichen"). Im Monitor (`s`) steht die Zeile `GPS-Zeit: ...`. Module ohne UBX (nicht u-blox) werden nach 90 s als "nicht pruefbar" behandelt und senden normal. Praxis: Tracker trotzdem 15 Minuten vor dem Start einschalten, draussen mit freier Sicht. Parser-Test: `npm run test:firmware` (braucht g++). Die Firmware selbst ist noch nicht auf dem Geraet getestet.
+
 ## Konfiguration (Umgebungsvariablen)
 
 | Variable | Standard | Beschreibung |
