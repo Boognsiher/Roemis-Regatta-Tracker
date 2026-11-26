@@ -401,6 +401,15 @@ app.post('/api/admin/courses', requireAdmin, (req, res) => {
 app.patch('/api/admin/courses/:id', requireAdmin, (req, res) => {
   res.json({ course: regatta.updateCourse(req.params.id, req.body || {}) });
 });
+app.get('/api/admin/courses/:id/export', requireAdmin, (req, res) => {
+  const out = regatta.exportCourse(req.params.id);
+  res.set('Content-Type', 'application/json; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="kurs-${String(out.course.name).replace(/[^\w-]+/g, '_')}.json"`);
+  res.send(JSON.stringify(out, null, 2));
+});
+app.post('/api/admin/courses/import', requireAdmin, (req, res) => {
+  res.status(201).json({ course: regatta.importCourse(req.body) });
+});
 app.post('/api/admin/courses/:id/activate', requireAdmin, (req, res) => {
   res.json({ course: regatta.activateCourse(req.params.id) });
 });
@@ -443,6 +452,13 @@ function sendExport(kind) {
 }
 app.get('/api/admin/export/tracks.csv', requireAdmin, sendExport('csv'));
 app.get('/api/admin/export/tracks.gpx', requireAdmin, sendExport('gpx'));
+// Nur der Kurs (Linien, Bojen, Route), ohne Logdaten
+app.get('/api/admin/export/course.gpx', requireAdmin, (req, res) => {
+  const sel = regatta.exportSelection({ ...req.query, trackers: 'none' });
+  res.set('Content-Type', 'application/gpx+xml; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="kurs-${String(sel.name).replace(/[^\w-]+/g, '_')}-${new Date().toISOString().slice(0, 10)}.gpx"`);
+  res.send(exporter.tracksGpx([], sel));
+});
 
 app.put('/api/admin/live-course', requireAdmin, (req, res) => {
   regatta.setLiveCourse(req.body ? req.body.courseId : null);

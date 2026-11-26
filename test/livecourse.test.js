@@ -36,3 +36,23 @@ test('Live-Karte: nur der aufgeschaltete Kurs ist oeffentlich sichtbar, unabhaen
   regatta.deleteCourse(a.id);                                                  // geloeschter Kurs wird abgeschaltet
   assert.strictEqual(regatta.publicState().liveCourseId, null);
 });
+
+test('Kurs exportieren und wieder importieren (Wiederverwendung): Regeln, Linie, Ziellinie, Bojen mit Umrundungsseite', () => {
+  const c = regatta.createCourse({ kind: 'distance', name: 'Langstrecke Test' });
+  regatta.setLine({ a: pt(-50, 0), b: pt(50, 0), mark: pt(0, 400) });
+  regatta.setCourse([{ ...pt(0, 1000), rounding: 'port' }, { a: pt(500, 1000), b: pt(600, 1000) }, pt(1000, 0)], 200, true);
+  regatta.setFinishLine({ a: pt(900, 500), b: pt(1000, 500) });
+  const file = JSON.parse(JSON.stringify(regatta.exportCourse(c.id)));
+  assert.strictEqual(file.format, 'regattazeit-kurs');
+  const n = regatta.importCourse(file);
+  assert.notStrictEqual(n.id, c.id);
+  assert.strictEqual(n.lapMode, 'distance');
+  assert.strictEqual(n.course.marks.length, 3);
+  assert.strictEqual(n.course.marks[0].rounding, 'port');
+  assert.ok(n.course.marks[1].a && n.course.marks[1].b);
+  assert.strictEqual(n.course.radiusM, 200);
+  assert.ok(n.finishLine && n.finishLine.a);
+  assert.deepStrictEqual(n.line, c.line);
+  assert.throws(() => regatta.importCourse({ foo: 1 }), /Kurs-Datei/);
+  assert.throws(() => regatta.importCourse({ format: 'regattazeit-kurs', course: { name: 'x', course: { marks: [{ lat: 999, lon: 0 }] } } }), /ungueltig/);
+});

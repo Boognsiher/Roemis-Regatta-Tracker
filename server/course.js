@@ -122,7 +122,7 @@ function gateCrossing(pts, gate, fromIdx, tFrom, tTo, approach, tolM = 15) {
  * Ein "Besuch" beginnt beim Betreten des Kreises (radiusM) und endet erst deutlich ausserhalb (Hysterese), damit
  * GPS-Rauschen an der Kreisgrenze ihn nicht zerhackt.
  */
-function detectRoundings(pts, marks, tFrom, tTo, radiusM, o, mid) {
+function detectRoundings(pts, marks, tFrom, tTo, radiusM, o, mid, passFrac = 0.6) {
   const events = [];
   const outR = radiusM * 1.2 + 20;
   let i = 0;
@@ -143,7 +143,7 @@ function detectRoundings(pts, marks, tFrom, tTo, radiusM, o, mid) {
     if (i >= pts.length || pts[i].t > tTo) break;
     const i0 = i;
     while (i < pts.length && pts[i].t <= tTo && dist(pts[i], m) <= outR) i += 1;
-    const apex = findApex(pts, i0, i - 1, m, o, radiusM, radiusM * 0.6);
+    const apex = findApex(pts, i0, i - 1, m, o, radiusM, radiusM * passFrac);
     if (apex) { events.push({ k, ...apex }); k += 1; continue; }
     if (i >= pts.length || pts[i].t > tTo) break;           // Besuch noch nicht abgeschlossen (Daten enden)
     // sonst: blosse Vorbeifahrt in grossem Abstand -> weiter nach einem naechsten Besuch suchen
@@ -383,11 +383,15 @@ function checkMarks({ pl, fixes, approxMarks, startPassTs, endTs = null, options
   const tTo = endTs == null ? Infinity : endTs;
   const out = marksXY.map((m, k) => {
     const prev = k === 0 ? mid : marksXY[k - 1];
-    const ev = detectRoundings(pts, [m], startPassTs, tTo, o.radiusM, o, prev)[0];
+    // Langstrecke: eine Vorbeifahrt innerhalb des eingestellten Radius gilt als Boje passiert (volle Toleranz; bei Rundkurs/Live-Rangliste strenger: 0.6 x Radius)
+    const ev = detectRoundings(pts, [m], startPassTs, tTo, o.radiusM, o, prev, o.passFrac ?? 1)[0];
     // Umrundungsrichtung: gewuenscht (approxMarks[k].rounding 'port'/'starboard', sonst beliebig) gegen die beobachtete Seite; Tore haben keine Seite
     const want = approxMarks[k].rounding === 'port' || approxMarks[k].rounding === 'starboard' ? approxMarks[k].rounding : null;
     const side = ev && !m.gate ? ev.side || null : null;
-    return { k, t: ev ? ev.t : null, passOnly: ev ? !!ev.passOnly : null, rounding: want, side, wrongSide: !!(want && side && side !== want) };
+    // Naechste Annaeherung des Wegs an die Boje (zwischen Start und Ende): zeigt, ob die gezeichnete Position zu weit von der echten Boje liegt
+    let closestM = null;
+    if (!m.gate) for (const q of pts) { if (q.t < startPassTs || q.t > tTo) continue; const d = dist(q, m); if (closestM === null || d < closestM) closestM = d; }
+    return { k, t: ev ? ev.t : null, passOnly: ev ? !!ev.passOnly : null, rounding: want, side, wrongSide: !!(want && side && side !== want), closestM: closestM === null ? null : Math.round(closestM) };
   });
   let last = -Infinity;
   out.forEach((r) => {

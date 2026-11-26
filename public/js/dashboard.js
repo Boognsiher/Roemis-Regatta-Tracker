@@ -336,6 +336,61 @@
   drawCourse();
   setInterval(drawCourse, 30000);
 
+  // ---- Ranglisten-Overlay auf der Karte: die ersten 5 Boote nach berechneter Zeit (Yardstick) der laufenden bzw. letzten Wettfahrt ----
+  const rankToggleEl = document.getElementById('show-rank');
+  let showRank = true;
+  let rankCollapsed = false;
+  try { showRank = localStorage.getItem('showRank') !== '0'; rankCollapsed = localStorage.getItem('rankCollapsed') === '1'; } catch (e) { /* Standard: an */ }
+  if (rankToggleEl) rankToggleEl.checked = showRank;
+  const rankBox = document.createElement('div');
+  rankBox.id = 'rank-overlay';
+  rankBox.style.display = 'none';
+  const mapEl = document.getElementById('map');
+  if (mapEl) mapEl.appendChild(rankBox);
+  rankBox.addEventListener('click', (ev) => {                         // Klick auf die Ueberschrift klappt die Liste ein/aus
+    if (!ev.target.closest('.rank-head')) return;
+    rankCollapsed = !rankCollapsed;
+    try { localStorage.setItem('rankCollapsed', rankCollapsed ? '1' : '0'); } catch (e) { /* egal */ }
+    rankBox.classList.toggle('collapsed', rankCollapsed);
+  });
+  ['mousedown', 'dblclick', 'wheel', 'touchstart'].forEach((n) => rankBox.addEventListener(n, (ev) => ev.stopPropagation()));
+  const fmtRankTime = (s) => {
+    if (s == null || !Number.isFinite(s)) return '–';
+    const t = Math.round(s);
+    return `${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  };
+  const fmtRankGap = (s) => {
+    const t = Math.round(Math.abs(s));
+    return `+${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  };
+  async function refreshRanking() {
+    if (!showRank) { rankBox.style.display = 'none'; return; }
+    try {
+      const res = await fetch('/api/regatta');
+      if (res.status === 401) return;
+      const reg = await res.json();
+      const now = Date.now();
+      const started = (reg.races || []).filter((r) => r.startTs != null);
+      const running = started.filter((r) => !r.official && now < r.startTs + (r.cutoffMinutes || 180) * 60000);
+      const race = (running.length ? running : started).sort((a, b) => b.startTs - a.startTs)[0] || (reg.races || []).filter((r) => r.auto && !r.official)[0];
+      if (!race) { rankBox.style.display = 'none'; return; }
+      const live = await (await fetch(`/api/races/${race.id}/live`)).json();
+      const rows = (live.entries || []).filter((e) => e.rank != null).slice(0, 5);
+      const state = !live.race || live.race.startTs == null ? 'wartet auf Start' : live.race.official ? 'offiziell' : live.race.running ? 'laeuft' : 'beendet';
+      rankBox.innerHTML = `<div class="rank-head"><b>${escHtml(live.race ? live.race.name : race.name)}</b> <span class="hint">${state} · Yardstick</span><span class="rank-arrow">${rankCollapsed ? '&#9662;' : '&#9652;'}</span></div>`
+        + `<div class="rank-body">${rows.length ? rows.map((e) => `<div class="rank-row"><span class="rank-n">${e.rank}</span><span class="rank-boat">${escHtml([e.sailNo, e.name].filter(Boolean).join(' '))}<span class="hint"> ${escHtml(e.className || '')}</span></span><span class="rank-t">${e.status === 'FIN' ? fmtRankTime(e.correctedSec) : (e.gapCorrectedSec ? fmtRankGap(e.gapCorrectedSec) : 'vorn')}${e.status === 'FIN' ? '' : `<span class="hint"> ${Math.round(e.progressPct || 0)}%</span>`}</span></div>`).join('') : '<div class="hint">Noch keine Wertung.</div>'}<div class="hint" style="margin-top:0.2rem">berechnete Zeit (Yardstick); unterwegs: Rueckstand auf den Ersten</div></div>`;
+      rankBox.classList.toggle('collapsed', rankCollapsed);
+      rankBox.style.display = 'block';
+    } catch (err) { /* keine Daten: Overlay bleibt wie es ist */ }
+  }
+  if (rankToggleEl) rankToggleEl.addEventListener('change', () => {
+    showRank = rankToggleEl.checked;
+    try { localStorage.setItem('showRank', showRank ? '1' : '0'); } catch (e) { /* egal */ }
+    refreshRanking();
+  });
+  refreshRanking();
+  setInterval(refreshRanking, 10000);
+
   async function loadInitial() {
     try {
       const res = await fetch('/api/trackers');

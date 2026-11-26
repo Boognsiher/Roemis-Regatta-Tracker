@@ -603,6 +603,7 @@
     const qs = q.toString() ? `?${q}` : '';
     $('ex-csv').href = `/api/admin/export/tracks.csv${qs}`;
     $('ex-gpx').href = `/api/admin/export/tracks.gpx${qs}`;
+    $('ex-course').href = '/api/admin/export/course.gpx';
   }
   $('ex-from').addEventListener('change', exportLinks);
   $('ex-to').addEventListener('change', exportLinks);
@@ -670,8 +671,20 @@
     const live = regatta.courses.find((x) => x.id === regatta.liveCourseId);
     const isLive = !!c && regatta.liveCourseId === c.id;
     $('cs-live').textContent = isLive ? 'Kurs von der Live-Karte nehmen' : 'Kurs auf Live-Karte aufschalten';
+    $('cs-export').href = c ? `/api/admin/courses/${encodeURIComponent(c.id)}/export` : '#';
     $('cs-live-msg').textContent = live ? `Auf der Live-Karte aufgeschaltet: ${live.name}` : 'Auf der Live-Karte ist kein Kurs aufgeschaltet.';
   }
+  $('cs-import').addEventListener('change', guard(async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    let data;
+    try { data = JSON.parse(await file.text()); } catch (err) { $('cs-live-msg').textContent = 'Datei ist keine gueltige Kurs-Datei.'; return; }
+    await api('/api/admin/courses/import', 'POST', data);
+    await load();
+    loadDrafts();
+    $('cs-live-msg').textContent = 'Kurs importiert und aktiviert.';
+  }));
   $('cs-live').addEventListener('click', guard(async () => {
     const c = activeCourse();
     if (!c) return;
