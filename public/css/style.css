@@ -52,7 +52,7 @@ html, body {
   padding: 0.75rem;
 }
 
-#map { flex: 1; background: #0b1218; min-height: 0; }
+#map { flex: 1; background: #0b1218; min-height: 0; position: relative; }
 
 /* Griff der Bootliste (nur auf dem Handy sichtbar) */
 #sidebar-toggle { display: none; }
@@ -265,3 +265,14 @@ table.results td.num { font-variant-numeric: tabular-nums; white-space: nowrap; 
 
 .bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
 .bar > div { height: 100%; background: var(--accent); }
+
+/* Ranglisten-Overlay auf der Live-Karte */
+#rank-overlay { position: absolute; top: 10px; right: 10px; z-index: 1000; background: rgba(15, 23, 32, 0.9); color: var(--text, #e6edf3); border: 1px solid #2a3a4a; border-radius: 8px; padding: 0.45rem 0.6rem; font-size: 0.85rem; max-width: min(300px, 70vw); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+#rank-overlay .rank-head { cursor: pointer; display: flex; gap: 0.4rem; align-items: baseline; flex-wrap: wrap; }
+#rank-overlay .rank-arrow { margin-left: auto; }
+#rank-overlay .rank-row { display: flex; gap: 0.5rem; align-items: baseline; padding: 0.12rem 0; }
+#rank-overlay .rank-n { font-weight: 700; min-width: 1.1rem; }
+#rank-overlay .rank-boat { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#rank-overlay .rank-t { font-variant-numeric: tabular-nums; white-space: nowrap; }
+#rank-overlay.collapsed .rank-body { display: none; }
+@media (max-width: 760px) { #rank-overlay { top: 6px; right: 6px; font-size: 0.78rem; max-width: 62vw; padding: 0.3rem 0.45rem; } }
