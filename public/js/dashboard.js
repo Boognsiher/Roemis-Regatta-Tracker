@@ -203,7 +203,7 @@
 
   function gpsStateText(st) {
     if (!st || st.gpsState == null) return '';
-    const names = ['GPS-Modul stumm', 'keine Satelliten', 'Suche'];
+    const names = ['GPS-Modul stumm', 'keine Satelliten', 'Suche', 'Fix da, GPS-Zeit wird noch abgeglichen'];
     return ` (${names[st.gpsState] || '?'}${st.sats ? `, ${st.sats} Sat.` : ''})`;
   }
 

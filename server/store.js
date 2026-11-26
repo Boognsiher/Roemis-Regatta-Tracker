@@ -292,7 +292,7 @@ function recordStatus(id, st) {
     battery: Number.isFinite(st.battery) ? st.battery : (prev ? prev.battery : null),
     rssi: Number.isFinite(st.rssi) ? st.rssi : null,
     snr: Number.isFinite(st.snr) ? st.snr : null,
-    gpsState: Number.isInteger(st.gpsState) && st.gpsState >= 0 && st.gpsState <= 2 ? st.gpsState : null,   // 0 stumm, 1 keine Satelliten, 2 Suche
+    gpsState: Number.isInteger(st.gpsState) && st.gpsState >= 0 && st.gpsState <= 3 ? st.gpsState : null,   // 0 stumm, 1 keine Satelliten, 2 Suche, 3 Fix da, aber GPS-Zeit noch nicht verlaesslich
     sats: Number.isInteger(st.sats) && st.sats >= 0 && st.sats <= 255 ? st.sats : null
   };
   scheduleSave();

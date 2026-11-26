@@ -20,6 +20,7 @@
 
 #ifdef OWN_TRACKER_ID
 #include <TinyGPSPlus.h>
+#include "gpstime.h"
 static TinyGPSPlus gps;
 static HardwareSerial GPSSerial(1);
 static bool ownFix = false;
@@ -107,8 +108,9 @@ void setup() {
 
 void loop() {
 #ifdef OWN_TRACKER_ID
-  while (GPSSerial.available()) gps.encode(GPSSerial.read());
-  ownFix = gps.location.isValid() && gps.location.age() < 3000;
+  gpsPump(GPSSerial, gps);   // NMEA an TinyGPS, nebenbei UBX-NAV-TIMEGPS (Schaltsekunden bekannt?)
+  // Eigene Position nur mit verlaesslicher UTC-Zeit (nach Kaltstart ist die Modulzeit bis ca. 12 min um einige Sekunden falsch, siehe ubxtime.h)
+  ownFix = gps.location.isValid() && gps.location.age() < 3000 && gpsTimeTrusted();
   // RMC-Satz abgeschlossen: eigene Position als Paket direkt in den Bluetooth-Puffer (verlustfrei, 1x pro Sekunde)
   if (gps.date.isUpdated() && gps.time.isUpdated()) {
     if (gps.date.isValid() && gps.time.isValid() && gps.location.isValid() && gps.location.age() < 3000 && gps.date.year() >= 2024) {
@@ -143,6 +145,7 @@ void loop() {
       uint32_t chars = gps.charsProcessed();
       int sats = gps.satellites.isValid() ? (int)gps.satellites.value() : 0;
       uint8_t state = (chars == lastChars) ? GPS_STATE_SILENT : (sats > 0 ? GPS_STATE_SEARCH : GPS_STATE_NOSATS);
+      if (state != GPS_STATE_SILENT && sats > 0 && gps.location.isValid() && !gpsTimeTrusted()) state = GPS_STATE_TIME;
       lastChars = chars;
       MasterNotify m;
       m.pkt.magic = PKT_MAGIC;
@@ -240,6 +243,7 @@ void loop() {
       Serial.printf("Chip %.0f Grad C%s (ESP32-Fuehler, nicht der Akku)\n", chipT, chipTempWarn(chipT));
     }
 #ifdef OWN_TRACKER_ID
+    Serial.printf("GPS-Zeit: %s\n", gpsTimeText());
     Serial.printf("Eigenes GPS: Fix %s, Sat %d, HDOP %.1f\n", ownFix ? "ja" : "nein",
                   gps.satellites.isValid() ? (int)gps.satellites.value() : -1,
                   gps.hdop.isValid() ? gps.hdop.hdop() : -1.0f);

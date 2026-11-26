@@ -29,7 +29,7 @@
     $('c-rx').textContent = rx; $('c-tx').textContent = tx; $('c-queue').textContent = queue.length; $('c-bad').textContent = bad;
   }
 
-  const GPS_STATES = ['GPS stumm (keine Daten vom Modul)', 'GPS ohne Satelliten', 'Suche, Satelliten sichtbar'];
+  const GPS_STATES = ['GPS stumm (keine Daten vom Modul)', 'GPS ohne Satelliten', 'Suche, Satelliten sichtbar', 'Fix da, GPS-Zeit wird noch abgeglichen (Positionen zurueckgehalten)'];
   function gpsText(h) {
     if (h.fix !== false) return 'Fix';
     return `kein Fix: ${GPS_STATES[h.gpsState] || 'unbekannt'}${h.sats ? ` · ${h.sats} Sat.` : ''}`;

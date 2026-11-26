@@ -95,6 +95,8 @@ test('Lebenszeichen speichert GPS-Zustand, onlineMap zaehlt Tracker ohne Positio
   assert.strictEqual(pub.status.gpsState, 2);
   assert.strictEqual(pub.status.sats, 5);
   assert.strictEqual(pub.status.battery, 0.4);   // Akku bleibt, wenn ein Lebenszeichen keinen mitbringt
+  store.recordStatus(t.id, { ts: Date.now(), gpsState: 3, sats: 6 });   // Fix da, GPS-Zeit noch nicht verlaesslich
+  assert.strictEqual(store.getPublicTracker(t.id).status.gpsState, 3);
   store.recordStatus(t.id, { ts: Date.now(), gpsState: 7, sats: 999 });   // ungueltig -> null
   assert.strictEqual(store.getPublicTracker(t.id).status.gpsState, null);
 });
