@@ -46,13 +46,18 @@ function tracksCsv(entries, { from = null, to = null } = {}) {
 }
 
 /** GPX 1.1: je Boot ein Track, optional Wegpunkte (Linie, Bojen). */
-function tracksGpx(entries, { from = null, to = null, name = 'Regatta', waypoints = [] } = {}) {
+function tracksGpx(entries, { from = null, to = null, name = 'Regatta', waypoints = [], routes = [] } = {}) {
   const out = [];
   out.push('<?xml version="1.0" encoding="UTF-8"?>');
   out.push('<gpx version="1.1" creator="Regatta-Tracker" xmlns="http://www.topografix.com/GPX/1/1">');
   out.push(`<metadata><name>${xmlEscape(name)}</name><time>${new Date().toISOString()}</time></metadata>`);
   for (const w of waypoints) {
     out.push(`<wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}"><name>${xmlEscape(w.name)}</name></wpt>`);
+  }
+  for (const r of routes) {
+    out.push(`<rte><name>${xmlEscape(r.name)}</name>`);
+    for (const q of r.points) out.push(`<rtept lat="${q.lat.toFixed(6)}" lon="${q.lon.toFixed(6)}"><name>${xmlEscape(q.name)}</name></rtept>`);
+    out.push('</rte>');
   }
   for (const e of entries) {
     const fixes = sortedFixes(e.fixes, from, to);

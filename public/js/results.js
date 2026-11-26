@@ -22,7 +22,7 @@
           <a href="/api/races/${r.id}/results.csv" style="color:var(--accent)">CSV</a></div>
         <table class="results"><thead><tr><th>Rang</th><th>Boot</th><th>Klasse</th><th>Gesegelt</th><th>Berechnet</th></tr></thead><tbody>
         ${res.entries.map((e) => `<tr><td class="num"><b>${e.rank ?? e.status}</b></td>
-          <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? (m.wrongSide ? ' ⚠' : ' ✓') : ' ✗'}`).join(' · ')}</div>` : ''}</td>
+          <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? (m.wrongSide ? ' ⚠' : ' ✓') : (m.closestM != null ? ` ✗<span class="hint">(${m.closestM} m)</span>` : ' ✗')}`).join(' · ')}</div>` : ''}</td>
           <td>${esc(e.className)} (${e.yardstick})</td>
           <td class="num">${fmt(e.elapsedSec)}</td><td class="num"><b>${fmt(e.correctedSec)}</b></td></tr>`).join('')}
         </tbody></table></div>`);

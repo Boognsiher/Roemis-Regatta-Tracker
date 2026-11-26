@@ -54,6 +54,8 @@
           <button id="cs-del" class="danger">Kurs loeschen</button>
         </div>
         <div class="row">
+          <a id="cs-export" class="badge" href="#" style="padding:0.5rem 0.9rem" title="Kurs mit Regeln, Linien und Bojen als Datei speichern (zum Wiederverwenden)">Kurs exportieren</a>
+          <label class="badge" style="padding:0.5rem 0.9rem;cursor:pointer" title="Kurs aus einer exportierten Datei als neuen Kurs anlegen">Kurs importieren<input type="file" id="cs-import" accept=".json,application/json" style="display:none" /></label>
           <button id="cs-live" class="secondary">Kurs auf Live-Karte aufschalten</button>
           <span id="cs-live-msg" class="hint"></span>
         </div>
@@ -165,7 +167,8 @@
           <div class="field"><label for="ex-from">Von</label><input type="datetime-local" step="1" id="ex-from" /></div>
           <div class="field"><label for="ex-to">Bis</label><input type="datetime-local" step="1" id="ex-to" /></div>
           <a id="ex-csv" class="badge" href="#" style="padding:0.5rem 0.9rem">CSV herunterladen</a>
-          <a id="ex-gpx" class="badge" href="#" style="padding:0.5rem 0.9rem">GPX herunterladen</a>
+          <a id="ex-gpx" class="badge" href="#" style="padding:0.5rem 0.9rem" title="Kurs (Linien, Bojen, Route) und Logdaten aller Tracker">GPX: Kurs + Logdaten</a>
+          <a id="ex-course" class="badge" href="#" style="padding:0.5rem 0.9rem" title="Nur Start-/Ziellinie, Bojen, Tore und Route">GPX: nur Kurs</a>
         </div>
         <p class="hint">Ohne Von/Bis wird alles exportiert.</p>
       </div>

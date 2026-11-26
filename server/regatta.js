@@ -195,6 +195,34 @@ function createCourse({ name, kind, copyFrom }) {
   return c;
 }
 
+/** Kurs als Datei (JSON) zum Wiederverwenden: enthaelt Regeln und die komplette Geometrie (Linie, Ziellinie, Bojen mit Umrundungsseite). */
+function exportCourse(id) {
+  const c = courseById(id);
+  if (!c) throw httpError(404, 'Kurs unbekannt');
+  const { name, description, lapMode, laps, minLapSeconds, cutoffMinutes, startOnExtension, line, finishLine, course } = c;
+  return { format: 'regattazeit-kurs', version: 1, exportedAt: new Date().toISOString(), course: { name, description, lapMode, laps, minLapSeconds, cutoffMinutes, startOnExtension, line, finishLine, course } };
+}
+
+/** Kurs aus einer Export-Datei als NEUEN Kurs anlegen (wird aktiv). Geometrie wird wie bei der Eingabe geprueft. */
+function importCourse(data) {
+  const isGate = (m) => m && isPoint(m.a) && isPoint(m.b);
+  const withRounding = (m) => (m.rounding === 'port' || m.rounding === 'starboard' ? { ...point(m), rounding: m.rounding } : point(m));
+  const src = data && data.format === 'regattazeit-kurs' && data.course;
+  if (!src || typeof src !== 'object') throw httpError(400, 'Keine gueltige Kurs-Datei (erwartet: Export aus "Kurs exportieren")');
+  if (src.line && !(isPoint(src.line.a) && isPoint(src.line.b) && isPoint(src.line.mark))) throw httpError(400, 'Linie in der Datei ungueltig');
+  const c = newCourse({ ...src, name: `${src.name || 'Importierter Kurs'}` });
+  if (c.line) c.line = { a: point(c.line.a), b: point(c.line.b), mark: point(c.line.mark) };
+  if (c.finishLine && !(isPoint(c.finishLine.a) && isPoint(c.finishLine.b))) c.finishLine = null;
+  if (c.course) {
+    const marks = Array.isArray(c.course.marks) ? c.course.marks : [];
+    if (marks.some((m) => !(isGate(m) || isPoint(m)))) throw httpError(400, 'Bojen in der Datei ungueltig');
+    c.course = { marks: marks.map((m) => (isGate(m) ? { a: point(m.a), b: point(m.b) } : withRounding(m))), radiusM: Number(c.course.radiusM) || 250, exact: !!c.course.exact };
+  }
+  state.courses.push(c);
+  activateCourse(c.id);
+  return c;
+}
+
 function updateCourse(id, patch) {
   const c = courseById(id);
   if (!c) throw httpError(404, 'Kurs unbekannt');
@@ -625,9 +653,12 @@ function computeResults(race, now = Date.now()) {
     if (distance && pl && a.startPassTs && race.course && race.course.marks && race.course.marks.length) {
       markResults = courseLib.checkMarks({
         pl, fixes, approxMarks: race.course.marks, startPassTs: a.startPassTs, endTs: a.finishTs || cEnd, options: { radiusM: race.course.radiusM || 250 }
-      }).map((m) => ({ n: m.k + 1, ts: m.t, passOnly: m.passOnly, inOrder: m.inOrder, rounding: m.rounding, side: m.side, wrongSide: m.wrongSide }));
+      }).map((m) => ({ n: m.k + 1, ts: m.t, passOnly: m.passOnly, inOrder: m.inOrder, rounding: m.rounding, side: m.side, wrongSide: m.wrongSide, closestM: m.closestM }));
       const missing = markResults.filter((m) => m.ts == null).map((m) => m.n);
-      if (missing.length) a.warnings = a.warnings.concat(`Boje ${missing.join(', ')} nicht gerundet/passiert (Radius ${race.course.radiusM || 250} m) - bitte pruefen`);
+      if (missing.length) {
+        const near = markResults.filter((m) => m.ts == null && m.closestM != null).map((m) => `Boje ${m.n}: ${m.closestM} m`).join(', ');
+        a.warnings = a.warnings.concat(`Boje ${missing.join(', ')} nicht gerundet/passiert (Radius ${race.course.radiusM || 250} m${near ? `; naechste Annaeherung ${near}` : ''}) - bitte pruefen`);
+      }
       const SIDE = { port: 'an Backbord', starboard: 'an Steuerbord' };
       markResults.filter((m) => m.wrongSide).forEach((m) => {
         a.warnings = a.warnings.concat(`Boje ${m.n} ${SIDE[m.side]} gelassen, verlangt ist ${SIDE[m.rounding]} (falsche Umrundungsrichtung) - bitte pruefen`);
@@ -821,28 +852,44 @@ function parseTime(v) {
 function exportSelection({ race, from, to, trackers }) {
   let f = parseTime(from);
   let t = parseTime(to);
-  let waypoints = [];
   let name = 'Regatta';
-  const src = state.line || state.course ? { line: state.line, course: state.course } : { line: null, course: null };
-  let geo = src;
+  let geo = { line: state.line, finishLine: state.finishLine, course: state.course };
   if (race) {
     const r = getRace(race);
     if (r.startTs == null) throw httpError(400, 'Wettfahrt hat keinen Start');
     f = r.startTs - 10 * 60000;
     t = raceEnd(r) + 10 * 60000;
     name = r.name;
-    geo = { line: r.line, course: r.course };
+    geo = { line: r.line, finishLine: r.finishLine, course: r.course };
   }
+  // Kurs als Wegpunkte (Linie, Ziellinie, Referenz, Bojen/Tore) und als Route in Fahrtreihenfolge
+  const waypoints = [];
+  const route = [];
+  const SIDE = { port: ' (Backbord lassen)', starboard: ' (Steuerbord lassen)' };
   if (geo.line) {
-    waypoints.push({ lat: geo.line.a.lat, lon: geo.line.a.lon, name: 'Linie A' }, { lat: geo.line.b.lat, lon: geo.line.b.lon, name: 'Linie B' });
+    waypoints.push({ lat: geo.line.a.lat, lon: geo.line.a.lon, name: 'Start Linie A' }, { lat: geo.line.b.lat, lon: geo.line.b.lon, name: 'Start Linie B' });
+    if (geo.line.mark) waypoints.push({ lat: geo.line.mark.lat, lon: geo.line.mark.lon, name: 'Referenz Kursseite' });
+    route.push({ lat: (geo.line.a.lat + geo.line.b.lat) / 2, lon: (geo.line.a.lon + geo.line.b.lon) / 2, name: 'Start' });
   }
   if (geo.course) {
     geo.course.marks.forEach((m, i) => {
-      if (m.a) waypoints.push({ lat: m.a.lat, lon: m.a.lon, name: `Tor ${i + 1} A` }, { lat: m.b.lat, lon: m.b.lon, name: `Tor ${i + 1} B` });
-      else waypoints.push({ lat: m.lat, lon: m.lon, name: `Boje ${i + 1}${geo.course.exact ? '' : ' (grob)'}` });
+      if (m.a) {
+        waypoints.push({ lat: m.a.lat, lon: m.a.lon, name: `Tor ${i + 1} A` }, { lat: m.b.lat, lon: m.b.lon, name: `Tor ${i + 1} B` });
+        route.push({ lat: (m.a.lat + m.b.lat) / 2, lon: (m.a.lon + m.b.lon) / 2, name: `Tor ${i + 1}` });
+      } else {
+        const nm = `Boje ${i + 1}${SIDE[m.rounding] || ''}${geo.course.exact ? '' : ' (grob)'}`;
+        waypoints.push({ lat: m.lat, lon: m.lon, name: nm });
+        route.push({ lat: m.lat, lon: m.lon, name: nm });
+      }
     });
   }
-  const ids = trackers ? String(trackers).split(',').filter(Boolean) : store.listTrackers().map((x) => x.id);
+  if (geo.finishLine && geo.finishLine.a && geo.finishLine.b) {
+    waypoints.push({ lat: geo.finishLine.a.lat, lon: geo.finishLine.a.lon, name: 'Ziel Linie A' }, { lat: geo.finishLine.b.lat, lon: geo.finishLine.b.lon, name: 'Ziel Linie B' });
+    route.push({ lat: (geo.finishLine.a.lat + geo.finishLine.b.lat) / 2, lon: (geo.finishLine.a.lon + geo.finishLine.b.lon) / 2, name: 'Ziel' });
+  }
+  const routes = route.length > 1 ? [{ name: 'Kurs', points: route }] : [];
+  // trackers=none: nur der Kurs, keine Logdaten
+  const ids = trackers === 'none' ? [] : trackers ? String(trackers).split(',').filter(Boolean) : store.listTrackers().map((x) => x.id);
   const entries = [];
   for (const id of ids) {
     const tr = store.getTracker(id);
@@ -855,13 +902,13 @@ function exportSelection({ race, from, to, trackers }) {
       fixes: store.readHistoryCached(id)
     });
   }
-  return { entries, from: f, to: t, name, waypoints };
+  return { entries, from: f, to: t, name, waypoints, routes };
 }
 
 migrateCourses();
 
 module.exports = {
-  listCourses, createCourse, updateCourse, activateCourse, deleteCourse, courseById, activeCourse,
+  listCourses, createCourse, exportCourse, importCourse, updateCourse, activateCourse, deleteCourse, courseById, activeCourse,
   exportSelection, computeLive, getLive, isRunning, runningRaces,
   flush, state, STATUS_CODES, httpError, publicState,
   setCourse, setFinishLine, setLiveCourse, resolveFinishLine, applyGeometry, raceEnd, windowFixes,
