@@ -363,6 +363,55 @@
     const t = Math.round(Math.abs(s));
     return `+${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
   };
+  let lastLive = null;          // zuletzt geladene Live-Rangliste (fuer Neuzeichnen beim Klick)
+  let selectedRankId = null;    // Boot, dessen Details gezeigt werden
+  const fmtDist = (m) => (m == null ? '–' : m >= 1000 ? `${(m / 1000).toFixed(2).replace('.', ',')} km` : `${Math.round(m)} m`);
+  const fmtKn = (v) => (v == null ? '–' : `${v.toFixed(1).replace('.', ',')} kn`);
+  const fmtGapSec = (s) => `${Math.floor(Math.abs(s) / 60)}:${String(Math.round(Math.abs(s)) % 60).padStart(2, '0')}`;
+
+  /** Detailblock zu einem Boot: Tempo, Kurs, VMG, naechste Boje, Boot davor/dahinter. */
+  function rankDetailHtml(e) {
+    const rows = [];
+    const row = (k, v) => rows.push(`<div class="rank-kv"><span>${k}</span><b>${v}</b></div>`);
+    const name = escHtml([e.sailNo, e.name].filter(Boolean).join(' '));
+    if (e.status === 'FIN') {
+      row('Gesegelt', fmtRankTime(e.elapsedSec));
+      row('Berechnet (Yardstick)', fmtRankTime(e.correctedSec));
+    } else {
+      row('Geschwindigkeit', fmtKn(e.speedKn));
+      row('Kurs', e.headingDeg != null ? `${e.headingDeg}°` : '–');
+      if (e.nextMark) {
+        row(`Naechste: ${escHtml(e.nextMark.label)}`, `${fmtDist(e.nextMark.distM)} · Peilung ${e.nextMark.bearingDeg}°`);
+        row('VMG zur Marke', e.vmgKn != null ? `${fmtKn(e.vmgKn)}${e.vmgKn < 0 ? ' (faehrt weg)' : ''}` : '–');
+      }
+      row('Fortschritt', `${Math.round(e.progressPct || 0)} % · Runde ${e.lapNow}`);
+      if (e.elapsedSec != null) row('Zeit seit Start', fmtRankTime(e.elapsedSec));
+      row('Vor mir (Kurs)', e.ahead ? `${escHtml(e.ahead.name)} · ${fmtDist(e.ahead.courseM)} (Luftlinie ${fmtDist(e.ahead.directM)})` : 'niemand – ich fuehre');
+      row('Hinter mir (Kurs)', e.behind ? `${escHtml(e.behind.name)} · ${fmtDist(e.behind.courseM)} (Luftlinie ${fmtDist(e.behind.directM)})` : 'niemand');
+    }
+    if (e.rankAhead) row('Wertung: Vordermann', `${escHtml(e.rankAhead.name)} · ${fmtGapSec(e.rankAhead.gapSec)} vorn`);
+    if (e.rankBehind) row('Wertung: Hintermann', `${escHtml(e.rankBehind.name)} · ${fmtGapSec(e.rankBehind.gapSec)} zurueck`);
+    if (e.lastFixAgeSec != null && e.lastFixAgeSec > 15) row('Letzte Position', `vor ${Math.round(e.lastFixAgeSec)} s`);
+    return `<div class="rank-detail"><div class="rank-dhead"><b>${name}</b> <span class="hint">${escHtml(e.className || '')} · Platz ${e.rank ?? '–'}</span><button type="button" class="rank-close" aria-label="Details schliessen">&times;</button></div>${rows.join('')}</div>`;
+  }
+
+  function renderRankBox() {
+    const live = lastLive;
+    if (!live) return;
+    const rows = (live.entries || []).filter((e) => e.rank != null).slice(0, 5);
+    const state = !live.race || live.race.startTs == null ? 'wartet auf Start' : live.race.official ? 'offiziell' : live.race.running ? 'laeuft' : 'beendet';
+    const sel = rows.find((e) => e.trackerId === selectedRankId);
+    rankBox.innerHTML = `<div class="rank-head"><b>${escHtml(live.race ? live.race.name : '')}</b> <span class="hint">${state} · Yardstick</span><span class="rank-arrow">${rankCollapsed ? '&#9662;' : '&#9652;'}</span></div>`
+      + `<div class="rank-body">${rows.length ? rows.map((e) => `<div class="rank-row${e.trackerId === selectedRankId ? ' sel' : ''}" data-id="${escHtml(e.trackerId)}" title="Klick: Details"><span class="rank-n">${e.rank}</span><span class="rank-boat">${escHtml([e.sailNo, e.name].filter(Boolean).join(' '))}<span class="hint"> ${escHtml(e.className || '')}</span></span><span class="rank-t">${e.status === 'FIN' ? fmtRankTime(e.correctedSec) : (e.gapCorrectedSec ? fmtRankGap(e.gapCorrectedSec) : 'vorn')}${e.status === 'FIN' ? '' : `<span class="hint"> ${Math.round(e.progressPct || 0)}%</span>`}</span></div>`).join('') : '<div class="hint">Noch keine Wertung.</div>'}${sel ? rankDetailHtml(sel) : '<div class="hint" style="margin-top:0.2rem">berechnete Zeit (Yardstick); unterwegs: Rueckstand auf den Ersten. Boot anklicken fuer Details.</div>'}</div>`;
+    rankBox.classList.toggle('collapsed', rankCollapsed);
+    rankBox.style.display = 'block';
+  }
+  rankBox.addEventListener('click', (ev) => {
+    if (ev.target.closest('.rank-close')) { selectedRankId = null; renderRankBox(); return; }
+    const row = ev.target.closest('.rank-row');
+    if (row) { selectedRankId = selectedRankId === row.dataset.id ? null : row.dataset.id; renderRankBox(); }
+  });
+
   async function refreshRanking() {
     if (!showRank) { rankBox.style.display = 'none'; return; }
     try {
@@ -374,13 +423,8 @@
       const running = started.filter((r) => !r.official && now < r.startTs + (r.cutoffMinutes || 180) * 60000);
       const race = (running.length ? running : started).sort((a, b) => b.startTs - a.startTs)[0] || (reg.races || []).filter((r) => r.auto && !r.official)[0];
       if (!race) { rankBox.style.display = 'none'; return; }
-      const live = await (await fetch(`/api/races/${race.id}/live`)).json();
-      const rows = (live.entries || []).filter((e) => e.rank != null).slice(0, 5);
-      const state = !live.race || live.race.startTs == null ? 'wartet auf Start' : live.race.official ? 'offiziell' : live.race.running ? 'laeuft' : 'beendet';
-      rankBox.innerHTML = `<div class="rank-head"><b>${escHtml(live.race ? live.race.name : race.name)}</b> <span class="hint">${state} · Yardstick</span><span class="rank-arrow">${rankCollapsed ? '&#9662;' : '&#9652;'}</span></div>`
-        + `<div class="rank-body">${rows.length ? rows.map((e) => `<div class="rank-row"><span class="rank-n">${e.rank}</span><span class="rank-boat">${escHtml([e.sailNo, e.name].filter(Boolean).join(' '))}<span class="hint"> ${escHtml(e.className || '')}</span></span><span class="rank-t">${e.status === 'FIN' ? fmtRankTime(e.correctedSec) : (e.gapCorrectedSec ? fmtRankGap(e.gapCorrectedSec) : 'vorn')}${e.status === 'FIN' ? '' : `<span class="hint"> ${Math.round(e.progressPct || 0)}%</span>`}</span></div>`).join('') : '<div class="hint">Noch keine Wertung.</div>'}<div class="hint" style="margin-top:0.2rem">berechnete Zeit (Yardstick); unterwegs: Rueckstand auf den Ersten</div></div>`;
-      rankBox.classList.toggle('collapsed', rankCollapsed);
-      rankBox.style.display = 'block';
+      lastLive = await (await fetch(`/api/races/${race.id}/live`)).json();
+      renderRankBox();
     } catch (err) { /* keine Daten: Overlay bleibt wie es ist */ }
   }
   if (rankToggleEl) rankToggleEl.addEventListener('change', () => {

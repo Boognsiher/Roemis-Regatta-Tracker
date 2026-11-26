@@ -276,3 +276,12 @@ table.results td.num { font-variant-numeric: tabular-nums; white-space: nowrap; 
 #rank-overlay .rank-t { font-variant-numeric: tabular-nums; white-space: nowrap; }
 #rank-overlay.collapsed .rank-body { display: none; }
 @media (max-width: 760px) { #rank-overlay { top: 6px; right: 6px; font-size: 0.78rem; max-width: 62vw; padding: 0.3rem 0.45rem; } }
+#rank-overlay .rank-row { cursor: pointer; border-radius: 4px; padding-left: 0.2rem; padding-right: 0.2rem; }
+#rank-overlay .rank-row:hover, #rank-overlay .rank-row.sel { background: rgba(80, 140, 200, 0.25); }
+#rank-overlay .rank-detail { margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid #2a3a4a; }
+#rank-overlay .rank-dhead { display: flex; gap: 0.4rem; align-items: baseline; }
+#rank-overlay .rank-close { margin-left: auto; background: none; border: none; color: inherit; font-size: 1.1rem; cursor: pointer; padding: 0 0.2rem; }
+#rank-overlay .rank-kv { display: flex; justify-content: space-between; gap: 0.6rem; padding: 0.08rem 0; }
+#rank-overlay .rank-kv span { color: #93a4b5; }
+#rank-overlay .rank-kv b { font-weight: 600; text-align: right; }
+@media (max-width: 760px) { #rank-overlay { max-height: 55vh; overflow-y: auto; } }

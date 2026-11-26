@@ -804,6 +804,7 @@ function computeLive(race, now = Date.now()) {
     ranking.entries.forEach((e) => { e.rank = null; e.gapCorrectedSec = null; });
     ranked.forEach((e, i) => { e.rank = i + 1; e.gapCorrectedSec = time(e) - time(ranked[0]); });
     ranking.leaderId = ranked.length ? ranked[0].trackerId : null;
+    courseLib.addNeighbors(ranking.entries);                       // Nachbarn ueber alle Klassen neu bestimmen
     ranking.entries.sort((x, y) => (x.rank ?? 1e6) - (y.rank ?? 1e6) || y.progressM - x.progressM || x.name.localeCompare(y.name, 'de'));
     ranking.elapsedSec = race.startTs == null ? null : Math.max(0, (now - race.startTs) / 1000);
   }
