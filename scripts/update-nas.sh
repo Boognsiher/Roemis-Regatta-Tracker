@@ -14,7 +14,7 @@ set -eu
 REPO="${REPO:-Boognsiher/Roemis-Regatta-Tracker}"
 BRANCH="${1:-${BRANCH:-claude/diy-position-tracker-km1g1v}}"
 URL="${TARBALL_URL:-https://api.github.com/repos/$REPO/tarball/$BRANCH}"
-KEEP="server public scripts docs README.md package.json package-lock.json Dockerfile .dockerignore"
+KEEP="server public scripts docs README.md package.json package-lock.json Dockerfile .dockerignore docker-compose.traefik.yml"
 
 cd "$(dirname "$0")/.."
 [ -f docker-compose.yml ] && [ -f .env ] || { echo "FEHLER: docker-compose.yml oder .env fehlt - bitte im Projektordner des NAS ausfuehren."; exit 1; }
@@ -52,10 +52,17 @@ if ! cmp -s docker-compose.yml "$TMP/src/docker-compose.yml"; then
 fi
 
 echo "4/5 Baue und starte die Container ..."
-docker compose --profile tunnel up -d --build
+# VPS hinter Traefik (COMPOSE_FILE in der .env): kein Cloudflare-Tunnel-Profil; sonst wie bisher mit Tunnel
+if grep -q '^COMPOSE_FILE=' .env; then
+  docker compose up -d --build
+else
+  docker compose --profile tunnel up -d --build
+fi
 
 echo "5/5 Pruefe, ob der Server antwortet ..."
-PORT="$(grep -E '^HOST_PORT=' .env | tail -1 | cut -d= -f2 | tr -d ' \r"')"
+PORT="$(grep -E '^VPS_PORT=' .env | tail -1 | cut -d= -f2 | tr -d ' \r"')"
+[ -z "$PORT" ] && PORT="$(grep -E '^HOST_PORT=' .env | tail -1 | cut -d= -f2 | tr -d ' \r"')"
+if grep -q '^COMPOSE_FILE=' .env; then PORT="${PORT:-3012}"; fi
 PORT="${PORT:-3000}"
 i=0
 while [ $i -lt 30 ]; do

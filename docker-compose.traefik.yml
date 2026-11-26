@@ -1,0 +1,18 @@
+# Betrieb hinter Traefik (VPS). Traefik laeuft schon auf dem Host (Ports 80/443, Certresolver "letsencrypt"), dieser Dienst bekommt nur Labels.
+# Zusammen mit docker-compose.yml verwenden; am einfachsten in der .env:   COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml
+# Danach genuegt:  docker compose up -d --build        (kein --profile tunnel, kein Cloudflare-Tunnel)
+# Vorher noetig: DNS-A-Eintrag der Domain auf die VPS-IP (bei Cloudflare "nur DNS"/graue Wolke) und REGATTA_DOMAIN in der .env.
+# Genau eine Zeile Ports: nur an 127.0.0.1 gebunden (Docker umgeht sonst die Firewall); Traefik erreicht den Container ueber das interne Netz.
+services:
+  regatta-tracker:
+    ports: !override
+      - "127.0.0.1:${VPS_PORT:-3012}:3000"
+    environment:
+      TRUST_PROXY: "1"        # echte Besucher-IP aus X-Forwarded-For (Sperre nach Fehlversuchen wirkt pro Besucher, nicht pro Proxy)
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.regatta.rule=Host(`${REGATTA_DOMAIN:?Bitte REGATTA_DOMAIN in der .env setzen}`)"
+      - traefik.http.routers.regatta.entrypoints=websecure
+      - traefik.http.routers.regatta.tls=true
+      - traefik.http.routers.regatta.tls.certresolver=letsencrypt
+      - traefik.http.services.regatta.loadbalancer.server.port=3000
