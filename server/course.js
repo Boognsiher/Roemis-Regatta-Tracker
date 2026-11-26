@@ -55,6 +55,33 @@ function markSide(p, q, m) {
   return c > 0 ? 'port' : 'starboard';
 }
 
+/**
+ * Seite der Boje zur Fahrtrichtung am Punkt der groessten Naehe (innerhalb +-60 s um tCenter): 'port' = Boje links, 'starboard' = rechts.
+ * Fahrtrichtung aus den Punkten um die Naehe (+-6 s, bei langsamer Fahrt bis +-20 s, damit die Sehne mindestens 8 m lang ist).
+ * null = Boje fast auf der Fahrtlinie (< 5 m); undefined = nicht bestimmbar (zu wenig Punkte/Bewegung).
+ */
+function sideAtClosest(pts, m, tCenter) {
+  let j = -1;
+  let best = Infinity;
+  for (let i = 0; i < pts.length; i += 1) {
+    if (Math.abs(pts[i].t - tCenter) > 60000) continue;
+    const d = dist(pts[i], m);
+    if (d < best) { best = d; j = i; }
+  }
+  if (j < 0) return undefined;
+  if (best < 5) return null;
+  for (const w of [6000, 10000, 20000]) {
+    let a = j;
+    while (a > 0 && pts[j].t - pts[a - 1].t <= w) a -= 1;
+    let b = j;
+    while (b < pts.length - 1 && pts[b + 1].t - pts[j].t <= w) b += 1;
+    if (a === b) continue;
+    const s = markSide(pts[a], pts[b], m);
+    if (s !== null || Math.hypot(pts[b].x - pts[a].x, pts[b].y - pts[a].y) >= 8) return s;
+  }
+  return undefined;
+}
+
 function findApex(pts, i0, i1, m, o, maxDistM = Infinity, passMaxM = Infinity) {
   const W = o.turnWindowS * 1000;
   let best = null;
@@ -427,7 +454,13 @@ function checkMarks({ pl, fixes, approxMarks, startPassTs, endTs = null, options
     const ev = detectRoundings(pts, [m], startPassTs, tTo, o.radiusM, o, prev, o.passFrac ?? 1)[0];
     // Umrundungsrichtung: gewuenscht (approxMarks[k].rounding 'port'/'starboard', sonst beliebig) gegen die beobachtete Seite; Tore haben keine Seite
     const want = approxMarks[k].rounding === 'port' || approxMarks[k].rounding === 'starboard' ? approxMarks[k].rounding : null;
-    const side = ev && !m.gate ? ev.side || null : null;
+    // Seite zur naechsten Annaeherung (Langstrecke): auf welcher Seite der Fahrtrichtung liegt die Boje, wenn das Boot ihr am naechsten ist. Bei weitem Abstand
+    // (bis zum vollen Radius) taugt die Drehrichtung der Rundung nicht: Wer in 150 m Abstand wendet, ohne die Boje zu umrunden, dreht auch irgendwie.
+    let side = ev && !m.gate ? ev.side || null : null;
+    if (ev && !m.gate) {
+      const near = sideAtClosest(pts, m, ev.t);
+      if (near !== undefined) side = near;
+    }
     // Naechste Annaeherung des Wegs an die Boje (zwischen Start und Ende): zeigt, ob die gezeichnete Position zu weit von der echten Boje liegt
     let closestM = null;
     if (!m.gate) for (const q of pts) { if (q.t < startPassTs || q.t > tTo) continue; const d = dist(q, m); if (closestM === null || d < closestM) closestM = d; }

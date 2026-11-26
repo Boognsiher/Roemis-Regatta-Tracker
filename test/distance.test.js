@@ -194,3 +194,22 @@ test('Umrundungsrichtung im Kurs speichern und in der Wertung melden', () => {
   assert.strictEqual(e.marks[0].wrongSide, true);
   assert.strictEqual(e.status, 'FIN');                                                        // nur Warnung, Wertung bleibt
 });
+
+test('Langstrecke: Seite der Boje bei weitem Abstand (150 m) und Wende in der Naehe: massgeblich ist die Lage der Boje zur Fahrtrichtung', () => {
+  const pl = timing.prepareLine(START);
+  const mark = { ...pt(0, 1500), rounding: 'port' };                           // Backbord lassen = Boje links vom Boot
+  const run = (xSide) => {
+    // von Sueden nach Norden in x = xSide, kurz vor der Boje wenden (Kreuz): erst 40 m nach Westen, dann wieder nach Norden - bleibt auf derselben Seite
+    const path = [[xSide, -200], [xSide, 1400], [xSide - 40 * Math.sign(xSide), 1440], [xSide, 1500], [xSide, 3000]];
+    return course.checkMarks({ pl, fixes: drive(path, GUN + 60000), approxMarks: [mark], startPassTs: GUN + 110000, endTs: null, options: { radiusM: 250 } })[0];
+  };
+  const east = run(150);        // Boot oestlich der Boje, faehrt nach Norden: Boje liegt links = Backbord = korrekt
+  assert.ok(east.t != null);
+  assert.strictEqual(east.side, 'port');
+  assert.strictEqual(east.wrongSide, false);
+  const west = run(-150);       // Boot westlich: Boje liegt rechts = Steuerbord = falsche Seite
+  assert.ok(west.t != null);
+  assert.strictEqual(west.side, 'starboard');
+  assert.strictEqual(west.wrongSide, true);
+  assert.ok(east.closestM >= 100 && east.closestM <= 200, `Naeheste Annaeherung ${east.closestM}`);
+});
