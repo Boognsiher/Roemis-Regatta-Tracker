@@ -13,7 +13,9 @@
   /** id -> { marker, line, data, trail, full } ; full = ganze Spur aus der Historie (nur im Modus "Ganze Spur anzeigen") */
   const boats = new Map();
   const MAX_FULL_TRAIL = 20000;   // Obergrenze, falls der Browser lange offen bleibt und live weitere Punkte anhaengt
-  let fullTrack = false;
+  // Standard: ganze Spur an (die Wahl wird pro Browser gemerkt)
+  let fullTrack = true;
+  try { fullTrack = localStorage.getItem('fullTrack') !== '0'; } catch (e) { /* Standard an */ }
   let hasFitOnce = false;
 
   function fmtAge(ts) {
@@ -103,6 +105,7 @@
 
   // ---- Ganze Spur aus der Historie (zum Testen, 17.11.2026) ----
   const fullTrackEl = document.getElementById('full-track');
+  if (fullTrackEl) fullTrackEl.checked = fullTrack;
   const trackRangeEl = document.getElementById('track-range');
   const trackInfoEl = document.getElementById('track-info');
 
@@ -183,6 +186,7 @@
 
   async function applyFullTrackMode() {
     fullTrack = !!(fullTrackEl && fullTrackEl.checked);
+    try { localStorage.setItem('fullTrack', fullTrack ? '1' : '0'); } catch (e) { /* egal */ }
     for (const entry of boats.values()) entry.full = null;
     if (!fullTrack) { for (const entry of boats.values()) redrawLine(entry); renderTrackInfo(); return; }
     renderTrackInfo();
