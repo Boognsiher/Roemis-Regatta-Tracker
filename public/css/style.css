@@ -285,3 +285,16 @@ table.results td.num { font-variant-numeric: tabular-nums; white-space: nowrap; 
 #rank-overlay .rank-kv span { color: #93a4b5; }
 #rank-overlay .rank-kv b { font-weight: 600; text-align: right; }
 @media (max-width: 760px) { #rank-overlay { max-height: 55vh; overflow-y: auto; } }
+
+/* Wettfahrt-Auswahl, Zeitleiste und Best-of */
+#rank-overlay .rank-race { max-width: 11rem; font-size: 0.85rem; padding: 0.1rem 0.2rem; }
+#rank-overlay .rank-bestof { margin-top: 0.4rem; border-top: 1px solid #2a3a4a; padding-top: 0.3rem; }
+#rank-overlay .rank-bestof summary { cursor: pointer; font-weight: 600; }
+#timeline { position: absolute; left: 10px; right: 10px; bottom: 26px; z-index: 1000; display: flex; align-items: center; gap: 0.5rem; background: rgba(15, 23, 32, 0.9); color: var(--text, #e6edf3); border: 1px solid #2a3a4a; border-radius: 8px; padding: 0.35rem 0.6rem; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+#timeline #tl-range { flex: 1; min-width: 0; }
+#timeline button { padding: 0.25rem 0.6rem; }
+#timeline .tl-label { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.85rem; }
+#timeline select { width: auto; padding: 0.15rem 0.25rem; }
+#track-controls.in-race #full-track, #track-controls.in-race label:has(#full-track), #track-controls.in-race #track-range { display: none; }
+@media (max-width: 760px) { #timeline { left: 6px; right: 6px; bottom: 22px; gap: 0.3rem; padding: 0.3rem 0.4rem; } #timeline .tl-label { font-size: 0.75rem; } }
+#track-controls.in-race #track-info { display: none; }
