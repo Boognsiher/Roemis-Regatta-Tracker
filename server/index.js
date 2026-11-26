@@ -30,6 +30,8 @@ if (!ADMIN_TOKEN) {
 }
 
 const app = express();
+// Hinter einem Reverse-Proxy (Traefik auf dem VPS): TRUST_PROXY=1 (Anzahl vertrauter Proxys) -> req.ip und req.secure kommen aus X-Forwarded-*
+if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 // Jede API-Antwort nennt die Schnittstellenversion (Header), damit Clients Abweichungen bemerken.
 app.use('/api', (req, res, next) => { res.set('X-API-Version', `${apiVersion.API_VERSION}.${apiVersion.API_MINOR}`); next(); });
 app.disable('x-powered-by');

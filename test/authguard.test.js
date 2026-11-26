@@ -49,3 +49,14 @@ test('CF-Connecting-IP wird bevorzugt', () => {
   const req = { get: (h) => (h === 'cf-connecting-ip' ? '5.5.5.5' : undefined), ip: '10.0.0.1' };
   assert.strictEqual(g.clientIp(req), '5.5.5.5');
 });
+
+test('Hinter eigenem Proxy (TRUST_PROXY): req.ip zaehlt, ein selbst gesetzter CF-Connecting-IP-Header wird ignoriert', () => {
+  const { g } = setup();
+  process.env.TRUST_PROXY = '1';
+  try {
+    const req = { get: (h) => (h === 'cf-connecting-ip' ? '6.6.6.6' : undefined), ip: '203.0.113.9' };
+    assert.strictEqual(g.clientIp(req), '203.0.113.9');
+  } finally {
+    delete process.env.TRUST_PROXY;
+  }
+});

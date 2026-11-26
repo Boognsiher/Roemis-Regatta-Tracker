@@ -10,6 +10,9 @@
  */
 
 function clientIp(req) {
+  // Hinter einem eigenen Reverse-Proxy (z.B. Traefik auf dem VPS, TRUST_PROXY gesetzt): Express liefert in req.ip die echte Besucher-IP aus X-Forwarded-For.
+  // CF-Connecting-IP wird dann ignoriert, denn ohne Cloudflare kann jeder Besucher diesen Header selbst setzen (Sperre umgehen).
+  if (process.env.TRUST_PROXY) return req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
   return req.get('cf-connecting-ip') || req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
 }
 
