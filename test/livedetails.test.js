@@ -56,3 +56,58 @@ test('Live-Details: naechste Boje, Distanz, VMG, Boot davor/dahinter', () => {
   assert.strictEqual(eb.rankAhead.name.includes('Vorn'), true);
   assert.strictEqual(ea.rankBehind.name.includes('Hinten'), true);
 });
+
+test('Wettfahrt-Ansicht: Kurs-Stand, Spuren im Zeitfenster, Rangliste zu einem fruehen Zeitpunkt', () => {
+  const race = regatta.getRace(regatta.publicState().races[0].id);
+  const view = regatta.raceView(race.id, { max: 50, now: GUN + 400000 });
+  assert.strictEqual(view.race.id, race.id);
+  assert.ok(view.course.line && view.course.line.a);
+  assert.strictEqual(view.course.marks.length, 1);
+  assert.strictEqual(view.boats.length, 2);
+  assert.ok(view.boats.every((b) => b.points.length > 1 && b.points.length <= 51));
+  assert.ok(view.window.from < GUN && view.window.to <= GUN + 400000);
+  assert.ok(view.boats.every((b) => b.points.every((p) => p.ts >= view.window.from && p.ts <= view.window.to)));
+  const early = regatta.getLiveAt(race.id, GUN + 100000);        // A ist noch vor der Linie, B startet erst spaeter
+  assert.ok(early.entries.length === 2);
+  const mid = regatta.getLiveAt(race.id, GUN + 200000);
+  const ea = mid.entries.find((e) => e.name === 'Vorn');
+  assert.strictEqual(ea.nextMark.label, 'Boje 1');
+  assert.deepStrictEqual(regatta.getLiveAt(race.id, GUN - 1000).entries, []);   // vor dem Start: leer
+  assert.throws(() => regatta.getLiveAt(race.id, NaN), /ungueltig/);
+});
+
+test('Best-of einer Wettfahrt: Boote im Ziel, schnellstes Boot, Strecke', () => {
+  const cls2 = regatta.addClass('YS90', 90);
+  const c = store.createTracker('Schnell');
+  const d = store.createTracker('Langsam');
+  regatta.registerBoat(c.id, { sailNo: '7', helm: 'c', classId: cls2.id });
+  regatta.registerBoat(d.id, { sailNo: '8', helm: 'd', classId: cls2.id });
+  const T1 = GUN + 5 * 3600000;
+  regatta.createCourse({ kind: 'bounce' });
+  regatta.setLine({ a: pt(-50, 0), b: pt(50, 0), mark: pt(0, 400) });
+  regatta.setCourse([pt(0, 800)], 250, true);
+  const loop = (t0, speed, extra) => {
+    const out = [];
+    let t = t0;
+    const wp = [[0, -200], [0, 800 + extra], [0, -200]];
+    for (let i = 0; i < wp.length - 1; i += 1) {
+      const [x0, y0] = wp[i]; const [x1, y1] = wp[i + 1];
+      const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / speed));
+      for (let k = 0; k < n; k += 1) { out.push({ ...pt(x0 + (x1 - x0) * (k / n), y0 + (y1 - y0) * (k / n)), ts: t }); t += 1000; }
+    }
+    out.push({ ...pt(0, -200), ts: t });
+    return out;
+  };
+  for (const f of loop(T1, 6, 0)) store.recordPosition(c.id, f);            // schnell, direkte Route
+  for (const f of loop(T1, 3, 100)) store.recordPosition(d.id, f);          // langsam, Umweg
+  const race2 = regatta.createRace({ name: 'Best', laps: 1, lapMode: 'bounce', startTs: T1, cutoffMinutes: 180 });
+  const stats = regatta.raceStats(race2.id, T1 + 3 * 3600000);
+  const titles = stats.awards.map((a) => a.title);
+  assert.ok(titles.includes('Schnellstes Boot (gesegelte Zeit)'));
+  const fastest = stats.awards.find((a) => a.title === 'Schnellstes Boot (gesegelte Zeit)');
+  assert.ok(fastest.boat.includes('Schnell'));
+  const maxs = stats.awards.find((a) => a.title === 'Hoechstgeschwindigkeit');
+  assert.ok(maxs.value > 10 && maxs.value < 13, `max ${maxs.value}`);                 // 6 m/s = 11,7 kn
+  const shortest = stats.awards.find((a) => a.title === 'Kuerzeste Strecke');
+  assert.ok(shortest.boat.includes('Schnell') && shortest.value > 1500 && shortest.value < 1700, JSON.stringify(shortest));   // 2 x 800 m zwischen Start- und Zieldurchgang
+});

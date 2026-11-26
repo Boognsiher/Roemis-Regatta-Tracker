@@ -318,6 +318,14 @@ Ist das Repository privat, legt man ein GitHub-Token mit reinem Lese-Recht (Cont
 
 Messungen vom 25./26.11.: Direkt nach einem Kaltstart war die Zeit des GPS-Moduls (NMEA) bis ca. 12 Minuten lang um genau 3 Sekunden falsch, obwohl die Position stimmte (das Modul kennt die Schaltsekunden noch nicht). Bei einer Regatta zaehlen Sekunden. Die Firmware liest deshalb die u-blox-Meldung `UBX-NAV-TIMEGPS` mit (`firmware/include/ubxtime.h`, `gpstime.h`) und sendet/zeichnet **keine Position auf, solange `leapSValid` fehlt**. Der Tracker sendet dann nur ein Lebenszeichen mit GPS-Zustand 3 (Dashboard: "Fix da, GPS-Zeit wird noch abgeglichen"). Im Monitor (`s`) steht die Zeile `GPS-Zeit: ...`. Module ohne UBX (nicht u-blox) werden nach 90 s als "nicht pruefbar" behandelt und senden normal. Praxis: Tracker trotzdem 15 Minuten vor dem Start einschalten, draussen mit freier Sicht. Parser-Test: `npm run test:firmware` (braucht g++). Die Firmware selbst ist noch nicht auf dem Geraet getestet.
 
+### Live-Karte: Wettfahrt wählen, Zeitleiste, Best-of
+
+Oben auf der Live-Karte (im Ranglisten-Feld und in der Seitenleiste) wählt man die **Wettfahrt**: "Live (aktuell)" oder eine bestimmte, laufende zuerst. Dann zeigt die Karte nur diese Wettfahrt: die **Spuren** der in ihr registrierten Boote im Zeitfenster der Wettfahrt (15 min vor dem Klassenstart bis Zielschluss), den **Kurs-Stand** dieser Wettfahrt und die **Rangliste** (Yardstick) samt Boots-Details. Die Zuordnung ergibt sich aus Zeitfenster und Registrierung, es werden keine Daten kopiert oder gelöscht (`GET /api/races/:id/view`).
+
+Die **Zeitleiste** unten spielt die Wettfahrt ab (Schieber, Play/Pause, 5x bis 200x, "Ende"). Zu jedem Zeitpunkt zeigen Karte, Bootsliste (Tempo) und Rangliste den Stand von damals (`GET /api/races/:id/live?at=<ms>`). Bei laufender Wettfahrt laedt die Ansicht alle 10 s nach; steht die Zeitleiste am Ende, laeuft sie live mit.
+
+**Best-of** (aufklappbar im Ranglisten-Feld, `GET /api/races/:id/stats`): schnellstes Boot (gesegelt und nach Yardstick), Hoechstgeschwindigkeit, hoechste Durchschnittsgeschwindigkeit, kuerzeste und laengste Strecke. Gezaehlt wird vom Start- bis zum Zieldurchgang, nur Boote im Ziel; das Tempo kommt aus den Positionen (10-s-Fenster), weil LoRa-Tracker keine Geschwindigkeit mitschicken.
+
 ## Konfiguration (Umgebungsvariablen)
 
 | Variable | Standard | Beschreibung |

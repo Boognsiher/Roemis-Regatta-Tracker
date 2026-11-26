@@ -699,6 +699,7 @@ function computeResults(race, now = Date.now()) {
       uncertaintyMs: ov.finishTs != null ? null : a.uncertaintyMs,
       note: ov.note || '',
       lapInfo: a.lapInfo || null,
+      startCrossingTs: a.startCrossingTs ?? a.startPassTs ?? null,
       marks: markResults,
       warnings
     });
@@ -816,6 +817,101 @@ function computeLive(race, now = Date.now()) {
   };
 }
 
+/**
+ * Ansicht einer Wettfahrt fuer die Live-Karte: Kurs-Stand der Wettfahrt, Spuren der registrierten Boote im Zeitfenster der Wettfahrt
+ * (15 min vor dem Klassen-Start bis Zielschluss + 5 min, bei laufender Wettfahrt bis jetzt), auf max Punkte je Boot ausgeduennt.
+ * Die Zuordnung der Spuren ergibt sich aus Zeitfenster und Registrierung; es werden keine Daten kopiert.
+ */
+function raceView(id, { max = 3000, now = Date.now() } = {}) {
+  const race = getRace(id);
+  refreshAuto(race, now);
+  const cutoffMs = (race.cutoffMinutes || 180) * 60000;
+  const out = {
+    race: { id: race.id, name: race.name, startTs: race.startTs, official: race.official, running: isRunning(race, now), auto: !!race.auto, lapMode: race.lapMode || 'bounce', laps: race.laps, classes: race.auto ? autoClasses(race) : [] },
+    course: { line: race.line || null, finishLine: race.lapMode === 'distance' ? (resolveFinishLine(race) || race.finishLine || null) : (race.finishLine || null), marks: (race.course && race.course.marks) || [], radiusM: race.course ? race.course.radiusM || 250 : null },
+    window: null,
+    boats: []
+  };
+  if (race.startTs == null) return out;
+  const to = Math.min(now, (raceEnd(race) || race.startTs + cutoffMs) + 5 * 60000);
+  out.window = { from: race.startTs - 15 * 60000, to };
+  for (const b of raceBoats()) {
+    const tracker = store.getTracker(b.trackerId);
+    const cls = state.classes.find((c) => c.id === b.classId);
+    const boat = state.boats[b.trackerId];
+    const start = classStart(race, b.classId) ?? race.startTs;
+    const from = start - 15 * 60000;
+    const pts = store.readHistoryCached(b.trackerId).filter((f) => f.ts >= from && f.ts <= to);
+    if (!pts.length) continue;
+    const step = Math.max(1, Math.ceil(pts.length / max));
+    const thin = pts.filter((_, i) => i % step === 0 || i === pts.length - 1)
+      .map((f) => ({ ts: f.ts, lat: f.lat, lon: f.lon, speed: f.speed ?? null }));
+    out.boats.push({ trackerId: b.trackerId, name: tracker.name, color: tracker.color, sailNo: boat.sailNo, helm: boat.helm, className: cls.name, startTs: start, points: thin });
+  }
+  return out;
+}
+
+/**
+ * Best-of einer Wettfahrt: schnellstes Boot (gesegelt/berechnet), hoechste Geschwindigkeit und Durchschnittsgeschwindigkeit, kuerzeste/laengste Strecke.
+ * Strecke und Tempo zaehlen vom Start-Durchgang bis zum Ziel (nur Boote im Ziel); Tempo aus den Positionen (10-s-Fenster, Ausreisser-sicher),
+ * weil nicht jede Quelle (LoRa-Tracker) eine Geschwindigkeit mitschickt.
+ */
+function raceStats(id, now = Date.now()) {
+  const race = getRace(id);
+  const res = computeResults(race, now);
+  const out = { race: { id: race.id, name: race.name, startTs: race.startTs }, awards: [], boats: [] };
+  if (race.startTs == null) return out;
+  const KN = 1.9438445;
+  const metres = (a, b) => Math.hypot((b.lat - a.lat) * 111320, (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180));
+  for (const e of res.entries) {
+    if (e.status !== 'FIN' || e.finishTs == null) continue;
+    const t0 = e.startCrossingTs != null ? e.startCrossingTs : e.finishTs - e.elapsedSec * 1000;
+    const fixes = timing.normalizeFixes(store.readHistoryCached(e.trackerId).filter((f) => f.ts >= t0 - 15000 && f.ts <= e.finishTs + 15000))
+      .filter((f) => f.ts >= t0 && f.ts <= e.finishTs);
+    if (fixes.length < 2) continue;
+    let dist = 0;
+    for (let i = 1; i < fixes.length; i += 1) dist += metres(fixes[i - 1], fixes[i]);
+    let maxMs = 0;
+    for (let i = 0, j = 0; i < fixes.length; i += 1) {
+      while (j < fixes.length - 1 && fixes[j].ts - fixes[i].ts < 10000) j += 1;
+      const dt = (fixes[j].ts - fixes[i].ts) / 1000;
+      if (dt >= 8) maxMs = Math.max(maxMs, metres(fixes[i], fixes[j]) / dt);
+    }
+    const sailedSec = (e.finishTs - t0) / 1000;
+    out.boats.push({
+      trackerId: e.trackerId, name: e.name, sailNo: e.sailNo, className: e.className, rank: e.rank, elapsedSec: e.elapsedSec, correctedSec: e.correctedSec,
+      distanceM: Math.round(dist), maxSpeedKn: Math.round(maxMs * KN * 10) / 10, avgSpeedKn: sailedSec > 0 ? Math.round((dist / sailedSec) * KN * 10) / 10 : null
+    });
+  }
+  const label = (b) => [b.sailNo, b.name].filter(Boolean).join(' ');
+  const best = (list, key, dir) => list.length ? list.reduce((a, b) => (dir * (b[key] - a[key]) > 0 ? b : a)) : null;
+  const add = (title, b, value, unit) => { if (b) out.awards.push({ title, boat: label(b), className: b.className, value, unit }); };
+  const fin = out.boats;
+  const byElapsed = best(fin.filter((b) => b.elapsedSec != null), 'elapsedSec', -1);
+  const byCorrected = best(fin.filter((b) => b.correctedSec != null), 'correctedSec', -1);
+  add('Schnellstes Boot (gesegelte Zeit)', byElapsed, byElapsed && byElapsed.elapsedSec, 's');
+  add('Sieger nach Yardstick (berechnete Zeit)', byCorrected, byCorrected && byCorrected.correctedSec, 's');
+  const fastest = best(fin, 'maxSpeedKn', 1);
+  add('Hoechstgeschwindigkeit', fastest, fastest && fastest.maxSpeedKn, 'kn');
+  const avg = best(fin.filter((b) => b.avgSpeedKn != null), 'avgSpeedKn', 1);
+  add('Hoechste Durchschnittsgeschwindigkeit', avg, avg && avg.avgSpeedKn, 'kn');
+  const shortest = best(fin, 'distanceM', -1);
+  add('Kuerzeste Strecke', shortest, shortest && shortest.distanceM, 'm');
+  if (fin.length > 1) { const longest = best(fin, 'distanceM', 1); add('Laengste Strecke', longest, longest && longest.distanceM, 'm'); }
+  return out;
+}
+
+/** Live-Rangliste zu einem beliebigen Zeitpunkt (Zeitleiste einer beendeten oder laufenden Wettfahrt); nicht gecacht. */
+function getLiveAt(id, at) {
+  const race = getRace(id);
+  if (!Number.isFinite(at)) throw httpError(400, 'at ungueltig');
+  refreshAuto(race, at);
+  if (race.startTs == null || at < race.startTs) {
+    return { race: { id: race.id, name: race.name, startTs: race.startTs, official: race.official, running: false, auto: !!race.auto, classes: race.auto ? autoClasses(race) : [] }, updatedAt: at, elapsedSec: null, needsCourse: false, marks: [], entries: [], leaderId: null, foremostId: null };
+  }
+  return computeLive(race, at);
+}
+
 /** Wie computeLive, aber hoechstens alle LIVE_TTL_MS neu berechnet (viele Zuschauer, gleiche Daten). */
 function getLive(id, now = Date.now()) {
   const race = getRace(id);
@@ -910,7 +1006,7 @@ migrateCourses();
 
 module.exports = {
   listCourses, createCourse, exportCourse, importCourse, updateCourse, activateCourse, deleteCourse, courseById, activeCourse,
-  exportSelection, computeLive, getLive, isRunning, runningRaces,
+  exportSelection, computeLive, getLive, getLiveAt, raceView, raceStats, isRunning, runningRaces,
   flush, state, STATUS_CODES, httpError, publicState,
   setCourse, setFinishLine, setLiveCourse, resolveFinishLine, applyGeometry, raceEnd, windowFixes,
   addClass, importClasses, deleteClass, registerBoat, unregisterBoat, setLine,

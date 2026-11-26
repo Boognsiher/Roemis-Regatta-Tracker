@@ -17,6 +17,10 @@
   let fullTrack = true;
   try { fullTrack = localStorage.getItem('fullTrack') !== '0'; } catch (e) { /* Standard an */ }
   let hasFitOnce = false;
+  /** Ansicht einer gewaehlten Wettfahrt (null = Live): { id, view, layer, items, tMin, tMax, t, playing, speed, timer } */
+  let raceMode = null;
+  let racesList = [];          // Wettfahrten (aus /api/regatta) fuer die Auswahl
+  let raceStatsData = null;    // Best-of der gewaehlten Wettfahrt
 
   function fmtAge(ts) {
     if (!ts) return 'nie';
@@ -65,9 +69,9 @@
 
     if (!entry.marker) {
       entry.marker = L.marker(latlng, { icon: boatIcon(t.color, t.stale) })
-        .addTo(map)
         .bindTooltip(t.name, { permanent: true, direction: 'right', offset: [10, 0], className: 'boat-label' });
-      entry.line = L.polyline([], { color: t.color, weight: 3, opacity: 0.7 }).addTo(map);
+      entry.line = L.polyline([], { color: t.color, weight: 3, opacity: 0.7 });
+      if (!raceMode) { entry.marker.addTo(map); entry.line.addTo(map); }
     } else {
       entry.marker.setLatLng(latlng);
       entry.marker.setIcon(boatIcon(t.color, t.stale));
@@ -95,7 +99,7 @@
     }
     redrawLine(entry);
 
-    if (!hasFitOnce) {
+    if (!hasFitOnce && !raceMode) {
       hasFitOnce = true;
       map.setView(latlng, 14);
     }
@@ -212,6 +216,7 @@
   }
 
   function renderList() {
+    if (raceMode) { renderRaceList(); return; }
     const items = [...boats.values()].sort((a, b) => a.data.name.localeCompare(b.data.name));
     if (items.length === 0) {
       boatListEl.innerHTML = '<p class="empty-state">Noch keine Tracker aktiv.</p>';
@@ -298,16 +303,17 @@
       reg = await res.json();
     } catch (err) { return; }
     courseBounds = [];
-    const live = reg.liveCourse;                   // nur der von der Wettfahrtleitung aufgeschaltete Kurs
+    // Live: nur der von der Wettfahrtleitung aufgeschaltete Kurs; Wettfahrt gewaehlt: der Kurs-Stand dieser Wettfahrt
+    const live = raceMode ? { name: raceMode.view.race.name, line: raceMode.view.course.line, finishLine: raceMode.view.course.finishLine, marks: raceMode.view.course.marks } : reg.liveCourse;
     const statusEl = document.getElementById('course-status');
     const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
     if (!live) { setStatus('Kein Kurs aufgeschaltet (die Wettfahrtleitung schaltet ihn auf).'); return; }
     if (!(live.line && live.line.a) && !(live.marks && live.marks.length)) { setStatus(`Kurs "${live.name}" ist aufgeschaltet, hat aber noch keine Linie und keine Bojen.`); return; }
-    setStatus(`Aufgeschaltet: ${live.name} (${live.line ? 'Linie' : 'ohne Linie'}, ${(live.marks || []).length} Boje(n)/Tor(e))`);
+    setStatus(`${raceMode ? 'Wettfahrt' : 'Aufgeschaltet'}: ${live.name} (${live.line ? 'Linie' : 'ohne Linie'}, ${(live.marks || []).length} Boje(n)/Tor(e))`);
     const ll = (q) => [q.lat, q.lon];
     const line = live.line;
     if (line && line.a && line.b) {
-      L.polyline([ll(line.a), ll(line.b)], { color: '#e6194b', weight: 4 }).bindTooltip('Start' + (reg.finishLine ? '' : ' / Ziel'), { permanent: true, direction: 'top' }).addTo(courseLayer);
+      L.polyline([ll(line.a), ll(line.b)], { color: '#e6194b', weight: 4 }).bindTooltip('Start' + (live.finishLine ? '' : ' / Ziel'), { permanent: true, direction: 'top' }).addTo(courseLayer);
     }
     const f = live.finishLine;
     if (f && f.a && f.b) L.polyline([ll(f.a), ll(f.b)], { color: '#3cb44b', weight: 4 }).bindTooltip('Ziel', { permanent: true, direction: 'bottom' }).addTo(courseLayer);
@@ -352,7 +358,7 @@
   const mapEl = document.getElementById('map');
   if (mapEl) mapEl.appendChild(rankBox);
   rankBox.addEventListener('click', (ev) => {                         // Klick auf die Ueberschrift klappt die Liste ein/aus
-    if (!ev.target.closest('.rank-head')) return;
+    if (!ev.target.closest('.rank-head') || ev.target.closest('select')) return;
     rankCollapsed = !rankCollapsed;
     try { localStorage.setItem('rankCollapsed', rankCollapsed ? '1' : '0'); } catch (e) { /* egal */ }
     rankBox.classList.toggle('collapsed', rankCollapsed);
@@ -405,8 +411,8 @@
     const rows = (live.entries || []).filter((e) => e.rank != null).slice(0, 5);
     const state = !live.race || live.race.startTs == null ? 'wartet auf Start' : live.race.official ? 'offiziell' : live.race.running ? 'laeuft' : 'beendet';
     const sel = rows.find((e) => e.trackerId === selectedRankId);
-    rankBox.innerHTML = `<div class="rank-head"><b>${escHtml(live.race ? live.race.name : '')}</b> <span class="hint">${state} · Yardstick</span><span class="rank-arrow">${rankCollapsed ? '&#9662;' : '&#9652;'}</span></div>`
-      + `<div class="rank-body">${rows.length ? rows.map((e) => `<div class="rank-row${e.trackerId === selectedRankId ? ' sel' : ''}" data-id="${escHtml(e.trackerId)}" title="Klick: Details"><span class="rank-n">${e.rank}</span><span class="rank-boat">${escHtml([e.sailNo, e.name].filter(Boolean).join(' '))}<span class="hint"> ${escHtml(e.className || '')}</span></span><span class="rank-t">${e.status === 'FIN' ? fmtRankTime(e.correctedSec) : (e.gapCorrectedSec ? fmtRankGap(e.gapCorrectedSec) : 'vorn')}${e.status === 'FIN' ? '' : `<span class="hint"> ${Math.round(e.progressPct || 0)}%</span>`}</span></div>`).join('') : '<div class="hint">Noch keine Wertung.</div>'}${sel ? rankDetailHtml(sel) : '<div class="hint" style="margin-top:0.2rem">berechnete Zeit (Yardstick); unterwegs: Rueckstand auf den Ersten. Boot anklicken fuer Details.</div>'}</div>`;
+    rankBox.innerHTML = `<div class="rank-head"><b>${raceMode ? '' : escHtml(live.race ? live.race.name : '')}</b>${racePickerHtml()} <span class="hint">${state} · Yardstick</span><span class="rank-arrow">${rankCollapsed ? '&#9662;' : '&#9652;'}</span></div>`
+      + `<div class="rank-body">${rows.length ? rows.map((e) => `<div class="rank-row${e.trackerId === selectedRankId ? ' sel' : ''}" data-id="${escHtml(e.trackerId)}" title="Klick: Details"><span class="rank-n">${e.rank}</span><span class="rank-boat">${escHtml([e.sailNo, e.name].filter(Boolean).join(' '))}<span class="hint"> ${escHtml(e.className || '')}</span></span><span class="rank-t">${e.status === 'FIN' ? fmtRankTime(e.correctedSec) : (e.gapCorrectedSec ? fmtRankGap(e.gapCorrectedSec) : 'vorn')}${e.status === 'FIN' ? '' : `<span class="hint"> ${Math.round(e.progressPct || 0)}%</span>`}</span></div>`).join('') : '<div class="hint">Noch keine Wertung.</div>'}${sel ? rankDetailHtml(sel) : '<div class="hint" style="margin-top:0.2rem">berechnete Zeit (Yardstick); unterwegs: Rueckstand auf den Ersten. Boot anklicken fuer Details.</div>'}${bestOfHtml()}</div>`;
     rankBox.classList.toggle('collapsed', rankCollapsed);
     rankBox.style.display = 'block';
   }
@@ -415,13 +421,19 @@
     const row = ev.target.closest('.rank-row');
     if (row) { selectedRankId = selectedRankId === row.dataset.id ? null : row.dataset.id; renderRankBox(); }
   });
+  rankBox.addEventListener('change', (ev) => {
+    if (ev.target.classList.contains('rank-race')) selectRace(ev.target.value || null);
+  });
 
   async function refreshRanking() {
-    if (!showRank) { rankBox.style.display = 'none'; return; }
+    if (!showRank && !raceMode) { rankBox.style.display = 'none'; return; }
     try {
       const res = await fetch('/api/regatta');
       if (res.status === 401) return;
       const reg = await res.json();
+      racesList = reg.races || [];
+      syncRacePickers();
+      if (raceMode) return;                      // Wettfahrt gewaehlt: Rangliste kommt von der Zeitleiste
       const now = Date.now();
       const started = (reg.races || []).filter((r) => r.startTs != null);
       const running = started.filter((r) => !r.official && now < r.startTs + (r.cutoffMinutes || 180) * 60000);
@@ -438,6 +450,293 @@
   });
   refreshRanking();
   setInterval(refreshRanking, 10000);
+
+  // ---- Wettfahrt-Ansicht: Auswahl, Spuren je Wettfahrt, Zeitleiste zum Abspielen, Best-of ----
+  const raceSelectEl = document.getElementById('race-select');
+  const raceState = (r) => {
+    const now = Date.now();
+    if (r.startTs == null) return 'wartet';
+    if (r.official) return 'offiziell';
+    return now < r.startTs + (r.cutoffMinutes || 180) * 60000 ? 'laeuft' : 'beendet';
+  };
+  /** Wettfahrten fuer die Auswahl: laufende zuerst, danach nach Start absteigend. */
+  function raceOptions() {
+    const order = { laeuft: 0, wartet: 1, beendet: 2, offiziell: 2 };
+    return racesList.slice().sort((a, b) => (order[raceState(a)] - order[raceState(b)]) || ((b.startTs || 0) - (a.startTs || 0)));
+  }
+  function racePickerHtml() {
+    const cur = raceMode ? raceMode.id : '';
+    return `<select class="rank-race" title="Wettfahrt waehlen">${'<option value="">Live (aktuell)</option>'}${raceOptions().map((r) => `<option value="${escHtml(r.id)}"${r.id === cur ? ' selected' : ''}>${escHtml(r.name)} (${raceState(r)})</option>`).join('')}</select>`;
+  }
+  function syncRacePickers() {
+    if (!raceSelectEl) return;
+    const cur = raceMode ? raceMode.id : '';
+    raceSelectEl.innerHTML = `<option value="">Live (aktuell)</option>${raceOptions().map((r) => `<option value="${escHtml(r.id)}">${escHtml(r.name)} (${raceState(r)})</option>`).join('')}`;
+    raceSelectEl.value = cur;
+  }
+  if (raceSelectEl) raceSelectEl.addEventListener('change', () => selectRace(raceSelectEl.value || null));
+
+  // Zeitleiste (unten auf der Karte)
+  const tl = document.createElement('div');
+  tl.id = 'timeline';
+  tl.style.display = 'none';
+  tl.innerHTML = '<button type="button" id="tl-play" title="Abspielen / Pause">&#9654;</button>'
+    + '<input type="range" id="tl-range" min="0" max="1000" value="1000" step="1" />'
+    + '<span id="tl-label" class="tl-label"></span>'
+    + '<select id="tl-speed" title="Geschwindigkeit"><option value="5">5×</option><option value="20" selected>20×</option><option value="60">60×</option><option value="200">200×</option></select>'
+    + '<button type="button" id="tl-end" title="Zum Ende / Live">Ende</button>';
+  if (mapEl) mapEl.appendChild(tl);
+  ['mousedown', 'dblclick', 'wheel', 'touchstart', 'click'].forEach((n) => tl.addEventListener(n, (ev) => ev.stopPropagation()));
+  const tlPlay = tl.querySelector('#tl-play');
+  const tlRange = tl.querySelector('#tl-range');
+  const tlLabel = tl.querySelector('#tl-label');
+  const tlSpeed = tl.querySelector('#tl-speed');
+  const tlEnd = tl.querySelector('#tl-end');
+  const fmtTod = (ts) => new Date(ts).toLocaleTimeString('de-CH', { hour12: false });
+
+  /** Position eines Boots zur Zeit t (linear interpoliert); null vor dem ersten Punkt. */
+  function posAt(pts, t) {
+    if (!pts.length || t < pts[0].ts) return null;
+    let lo = 0;
+    let hi = pts.length - 1;
+    if (t >= pts[hi].ts) return { lat: pts[hi].lat, lon: pts[hi].lon, idx: hi };
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (pts[mid].ts <= t) lo = mid; else hi = mid; }
+    const a = pts[lo];
+    const b = pts[hi];
+    const u = b.ts > a.ts ? (t - a.ts) / (b.ts - a.ts) : 0;
+    return { lat: a.lat + u * (b.lat - a.lat), lon: a.lon + u * (b.lon - a.lon), idx: lo };
+  }
+  const distM = (a, b) => Math.hypot((b.lat - a.lat) * 111320, (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180));
+  function speedAtKn(pts, t) {
+    const p = posAt(pts, t);
+    const q = posAt(pts, t - 10000);
+    if (!p || !q) return null;
+    const dt = 10;
+    return (distM(q, p) / dt) * 1.9438445;
+  }
+
+  function setTime(t) {
+    if (!raceMode) return;
+    raceMode.t = Math.max(raceMode.tMin, Math.min(raceMode.tMax, t));
+    const T = raceMode.t;
+    for (const it of raceMode.items) {
+      const p = posAt(it.pts, T);
+      if (!p) { if (it.marker && raceMode.layer.hasLayer(it.marker)) raceMode.layer.removeLayer(it.marker); it.trail.setLatLngs([]); continue; }
+      if (!raceMode.layer.hasLayer(it.marker)) it.marker.addTo(raceMode.layer);
+      it.marker.setLatLng([p.lat, p.lon]);
+      const prefix = it.pts.slice(0, p.idx + 1);
+      prefix.push({ lat: p.lat, lon: p.lon });
+      it.trail.setLatLngs(smoothOn ? smoothTrack(prefix) : prefix.map((q) => [q.lat, q.lon]));
+    }
+    tlRange.value = String(Math.round(((T - raceMode.tMin) / Math.max(1, raceMode.tMax - raceMode.tMin)) * 1000));
+    const startTs = raceMode.view.race.startTs;
+    const rel = startTs != null ? Math.round((T - startTs) / 1000) : null;
+    tlLabel.textContent = `${fmtTod(T)}${rel != null ? ` · ${rel < 0 ? '−' : '+'}${Math.floor(Math.abs(rel) / 60)}:${String(Math.abs(rel) % 60).padStart(2, '0')}` : ''}`;
+    const nowMs = performance.now();
+    if (!raceMode.listAt || nowMs - raceMode.listAt > 500) { raceMode.listAt = nowMs; renderRaceList(); }
+    scheduleRankAt();
+  }
+
+  let rankAtTimer = null;
+  function scheduleRankAt() {
+    if (rankAtTimer) return;
+    rankAtTimer = setTimeout(async () => {
+      rankAtTimer = null;
+      if (!raceMode) return;
+      const mode = raceMode;
+      try {
+        const atEnd = mode.t >= mode.tMax - 500 && mode.view.race.running;
+        const res = await fetch(`/api/races/${mode.id}/live${atEnd ? '' : `?at=${Math.round(mode.t)}`}`);
+        if (!res.ok || raceMode !== mode) return;
+        let live = await res.json();
+        if (!(live.entries || []).some((e) => e.rank != null)) {
+          // Kein Kurs/keine Live-Wertung: Endergebnis der Wettfahrt zeigen
+          const r2 = await fetch(`/api/races/${mode.id}/results`);
+          if (r2.ok) { const results = await r2.json(); live = { race: { name: results.race.name, startTs: results.race.startTs, official: results.race.official, running: false }, entries: results.entries }; }
+        }
+        if (raceMode !== mode) return;
+        lastLive = live;
+        renderRankBox();
+      } catch (err) { /* Rangliste bleibt wie sie ist */ }
+    }, 1200);
+  }
+
+  function stopPlay() {
+    if (!raceMode) return;
+    raceMode.playing = false;
+    if (raceMode.timer) { clearInterval(raceMode.timer); raceMode.timer = null; }
+    tlPlay.innerHTML = '&#9654;';
+  }
+  function startPlay() {
+    if (!raceMode) return;
+    if (raceMode.t >= raceMode.tMax - 500) setTime(raceMode.tMin);
+    raceMode.playing = true;
+    tlPlay.innerHTML = '&#10074;&#10074;';
+    let last = performance.now();
+    raceMode.timer = setInterval(() => {
+      const now = performance.now();
+      const dtMs = now - last;
+      last = now;
+      setTime(raceMode.t + dtMs * Number(tlSpeed.value));
+      if (raceMode.t >= raceMode.tMax) stopPlay();
+    }, 100);
+  }
+  tlPlay.addEventListener('click', () => { if (!raceMode) return; if (raceMode.playing) stopPlay(); else startPlay(); });
+  tlRange.addEventListener('input', () => {
+    if (!raceMode) return;
+    stopPlay();
+    setTime(raceMode.tMin + (Number(tlRange.value) / 1000) * (raceMode.tMax - raceMode.tMin));
+  });
+  tlEnd.addEventListener('click', () => { if (!raceMode) return; stopPlay(); setTime(raceMode.tMax); });
+
+  function clearRaceLayers() {
+    if (!raceMode) return;
+    stopPlay();
+    map.removeLayer(raceMode.layer);
+    if (raceMode.refreshTimer) clearInterval(raceMode.refreshTimer);
+  }
+
+  /** Spuren einer Wettfahrt zeichnen und Zeitleiste aufsetzen (view = Antwort von /api/races/:id/view). */
+  function buildRaceLayers(view, keepTime) {
+    const prev = raceMode;
+    const layer = L.layerGroup().addTo(map);
+    const items = view.boats.map((b) => {
+      const full = L.polyline(smoothOn ? smoothTrack(b.points) : b.points.map((q) => [q.lat, q.lon]), { color: b.color, weight: 2, opacity: 0.3 }).addTo(layer);
+      const trail = L.polyline([], { color: b.color, weight: 4, opacity: 0.9 }).addTo(layer);
+      const marker = L.marker([b.points[0].lat, b.points[0].lon], { icon: boatIcon(b.color, false) })
+        .bindTooltip(escHtml([b.sailNo, b.name].filter(Boolean).join(' ')), { permanent: true, direction: 'right', offset: [10, 0], className: 'boat-label' });
+      return { b, pts: b.points, full, trail, marker };
+    });
+    const all = view.boats.flatMap((b) => b.points.map((p) => p.ts));
+    const tMin = all.length ? Math.min(...all) : (view.window ? view.window.from : Date.now());
+    const tMax = all.length ? Math.max(...all) : tMin;
+    return { prev, layer, items, tMin, tMax };
+  }
+
+  async function enterRace(view, firstTime) {
+    if (raceMode) clearRaceLayers();
+    for (const entry of boats.values()) {            // Live-Marker und -Spuren ausblenden
+      if (entry.marker) map.removeLayer(entry.marker);
+      if (entry.line) map.removeLayer(entry.line);
+    }
+    const built = buildRaceLayers(view);
+    raceMode = { id: view.race.id, view, layer: built.layer, items: built.items, tMin: built.tMin, tMax: built.tMax, t: built.tMax, playing: false, timer: null, refreshTimer: null };
+    tl.style.display = 'flex';
+    if (trackControlsEl) trackControlsEl.classList.add('in-race');
+    syncRacePickers();
+    drawCourse();
+    if (!view.boats.length) { tlLabel.textContent = view.window ? 'keine Spuren in dieser Wettfahrt' : 'noch nicht gestartet'; }
+    const pts = view.boats.flatMap((b) => b.points.map((p) => [p.lat, p.lon]));
+    if (pts.length) map.fitBounds(pts, { maxZoom: 17, padding: [40, 40] });
+    setTime(raceMode.tMax);
+    loadRaceStats();
+    // Laufende Wettfahrt: Spuren regelmaessig nachladen; steht die Zeitleiste am Ende, laeuft sie mit
+    if (view.race.running) {
+      raceMode.refreshTimer = setInterval(refreshRaceView, 10000);
+    }
+  }
+
+  async function refreshRaceView() {
+    if (!raceMode) return;
+    const mode = raceMode;
+    try {
+      const res = await fetch(`/api/races/${mode.id}/view`);
+      if (!res.ok || raceMode !== mode) return;
+      const view = await res.json();
+      const follow = mode.t >= mode.tMax - 500;
+      const t = mode.t;
+      const wasPlaying = mode.playing;
+      const timerOld = mode.refreshTimer;
+      stopPlay();
+      map.removeLayer(mode.layer);
+      const built = buildRaceLayers(view);
+      Object.assign(mode, { view, layer: built.layer, items: built.items, tMin: built.tMin, tMax: built.tMax });
+      mode.refreshTimer = timerOld;
+      setTime(follow ? mode.tMax : t);
+      if (wasPlaying && !follow) startPlay();
+      if (!view.race.running && mode.refreshTimer) { clearInterval(mode.refreshTimer); mode.refreshTimer = null; }
+    } catch (err) { /* naechster Versuch in 10 s */ }
+  }
+
+  function leaveRace() {
+    if (!raceMode) return;
+    clearRaceLayers();
+    raceMode = null;
+    raceStatsData = null;
+    tl.style.display = 'none';
+    if (trackControlsEl) trackControlsEl.classList.remove('in-race');
+    for (const entry of boats.values()) {            // Live-Anzeige wieder einblenden
+      if (entry.marker) entry.marker.addTo(map);
+      if (entry.line) entry.line.addTo(map);
+      redrawLine(entry);
+    }
+    const sumEl = document.getElementById('sidebar-summary');
+    if (sumEl) sumEl.textContent = 'Boote';
+    syncRacePickers();
+    drawCourse();
+    renderList();
+    lastLive = null;
+    refreshRanking();
+  }
+
+  async function selectRace(id) {
+    if (!id) { leaveRace(); return; }
+    if (raceMode && raceMode.id === id) return;
+    try {
+      const res = await fetch(`/api/races/${encodeURIComponent(id)}/view`);
+      if (res.status === 401) { location.replace('/login.html?next=/index.html'); return; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      selectedRankId = null;
+      await enterRace(await res.json());
+    } catch (err) {
+      console.error('Wettfahrt nicht geladen', err);
+      syncRacePickers();
+    }
+  }
+
+  /** Boote der gewaehlten Wettfahrt in der Seitenleiste: Klasse und Tempo zur Zeit der Zeitleiste. */
+  function renderRaceList() {
+    if (!raceMode) return;
+    const v = raceMode.view;
+    const sumEl = document.getElementById('sidebar-summary');
+    if (sumEl) sumEl.textContent = `${v.race.name} · ${v.boats.length} Boote`;
+    const head = `<div class="hint" style="margin-bottom:0.5rem"><b>${escHtml(v.race.name)}</b> · ${v.boats.length} Boote${v.window ? '' : ' · noch nicht gestartet'}</div>`;
+    boatListEl.innerHTML = head + raceMode.items.map((it) => {
+      const sp = speedAtKn(it.pts, raceMode.t);
+      const p = posAt(it.pts, raceMode.t);
+      return `<div class="boat-card" data-id="${escHtml(it.b.trackerId)}"><div class="boat-dot" style="background:${it.b.color}"></div><div class="boat-info"><div class="boat-name">${escHtml([it.b.sailNo, it.b.name].filter(Boolean).join(' '))}</div><div class="boat-meta">${escHtml(it.b.className || '')}${p ? ` · ${sp != null ? sp.toFixed(1).replace('.', ',') + ' kn' : '–'}` : ' · noch nicht gestartet'}</div></div></div>`;
+    }).join('') || '<p class="empty-state">Keine Boote mit Spuren in dieser Wettfahrt.</p>';
+    boatListEl.querySelectorAll('.boat-card').forEach((el) => {
+      el.addEventListener('click', () => {
+        const it = raceMode && raceMode.items.find((x) => x.b.trackerId === el.dataset.id);
+        const p = it && posAt(it.pts, raceMode.t);
+        if (p) map.setView([p.lat, p.lon], Math.max(map.getZoom(), 15));
+      });
+    });
+  }
+
+  // Best-of der gewaehlten Wettfahrt (Server: /api/races/:id/stats), nur Boote im Ziel
+  async function loadRaceStats() {
+    if (!raceMode) return;
+    const mode = raceMode;
+    try {
+      const res = await fetch(`/api/races/${mode.id}/stats`);
+      if (!res.ok || raceMode !== mode) return;
+      raceStatsData = await res.json();
+      renderRankBox();
+    } catch (err) { /* kein Best-of */ }
+  }
+  function awardValue(a) {
+    if (a.unit === 's') return fmtRankTime(a.value);
+    if (a.unit === 'kn') return fmtKn(a.value);
+    if (a.unit === 'm') return fmtDist(a.value);
+    return String(a.value);
+  }
+  function bestOfHtml() {
+    if (!raceMode || !raceStatsData || !(raceStatsData.awards || []).length) return '';
+    return `<details class="rank-bestof"><summary>Best-of dieser Wettfahrt</summary>${raceStatsData.awards.map((a) => `<div class="rank-kv"><span>${escHtml(a.title)}</span><b>${escHtml(a.boat)} · ${escHtml(awardValue(a))}</b></div>`).join('')}</details>`;
+  }
+  const trackControlsEl = document.getElementById('track-controls');
 
   async function loadInitial() {
     try {

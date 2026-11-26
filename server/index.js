@@ -241,7 +241,12 @@ app.put('/api/trackers/:id/registration', authGuard.middleware, (req, res) => {
 // Oeffentlich: Klassen, Registrierungen, Linie, Wettfahrten.
 app.get('/api/regatta', requireViewer, (req, res) => res.json(regatta.publicState()));
 app.get('/api/races/:id/results', requireViewer, (req, res) => res.json(regatta.computeResults(regatta.getRace(req.params.id))));
-app.get('/api/races/:id/live', requireViewer, (req, res) => res.json(regatta.getLive(req.params.id)));
+app.get('/api/races/:id/live', requireViewer, (req, res) => {
+  // ?at=<ms>: Rangliste zu einem fruehren Zeitpunkt (Zeitleiste)
+  res.json(req.query.at !== undefined ? regatta.getLiveAt(req.params.id, Number(req.query.at)) : regatta.getLive(req.params.id));
+});
+app.get('/api/races/:id/stats', requireViewer, (req, res) => res.json(regatta.raceStats(req.params.id)));
+app.get('/api/races/:id/view', requireViewer, (req, res) => res.json(regatta.raceView(req.params.id, { max: Math.min(6000, Math.max(200, parseInt(req.query.max, 10) || 3000)) })));
 app.get('/api/races/:id/results.csv', requireViewer, (req, res) => {
   const race = regatta.getRace(req.params.id);
   res.set('Content-Type', 'text/csv; charset=utf-8');
