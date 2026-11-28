@@ -1,6 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// (28.11.2026) Release-Signatur: Schluessel und Passwoerter liegen NIE im Repository, sondern in einer Datei ausserhalb.
+// Standard: ~/.regatta-tracker/keystore.properties (storeFile, storePassword, keyAlias, keyPassword); anderer Ort per
+// Umgebungsvariable REGATTA_TRACKER_KEYSTORE. Fehlt die Datei, wird der Release-Build nicht signiert (Debug-Builds gehen immer).
+// WICHTIG: Ohne diesen Schluessel kann keine Update-Version mehr gebaut werden - Android verlangt fuer Updates die gleiche Signatur.
+val keystoreProps = Properties().apply {
+    val f = file(System.getenv("REGATTA_TRACKER_KEYSTORE") ?: "${System.getProperty("user.home")}/.regatta-tracker/keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -11,13 +22,26 @@ android {
         applicationId = "ch.regattazeit.tracker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // Bei jeder verteilten Version versionCode erhoehen, sonst installiert Android das Update nicht.
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    signingConfigs {
+        if (keystoreProps.getProperty("storeFile") != null) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

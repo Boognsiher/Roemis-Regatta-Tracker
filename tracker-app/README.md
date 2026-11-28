@@ -20,6 +20,13 @@ Braucht Android SDK (API 34) und JDK 17:
 
 Die APK liegt danach in `app/build/outputs/apk/debug/app-debug.apk`.
 
+### Release (zum Verteilen)
+    ./gradlew assembleRelease
+
+Ergebnis: `app/build/outputs/apk/release/app-release.apk`, signiert mit dem Release-Schluessel. Schluessel und Passwoerter liegen NICHT im Repository, sondern in `~/.regatta-tracker/keystore.properties` (Eintraege `storeFile`, `storePassword`, `keyAlias`, `keyPassword`; anderer Ort per Umgebungsvariable `REGATTA_TRACKER_KEYSTORE`). Fehlt die Datei, wird die Release-APK unsigniert gebaut und laesst sich nicht installieren.
+
+**Den Schluessel sicher aufbewahren (Backup!).** Ohne ihn kann keine Update-Version mehr gebaut werden: Android installiert ein Update nur mit derselben Signatur, sonst muessen alle Nutzer die App deinstallieren. Vor jeder Verteilung `versionCode` in `app/build.gradle.kts` erhoehen.
+
 **Stand:** Die Core-Logik ist getestet. Der Android-Teil wurde in der Cloud-Umgebung NICHT kompiliert (kein SDK) und nicht auf einem Gerät getestet – beim ersten Build können Kleinigkeiten anfallen.
 
 ## Verteilen
