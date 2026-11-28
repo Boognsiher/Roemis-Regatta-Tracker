@@ -19,14 +19,21 @@ object Prefs {
 
     /** Speichert einen neuen Link. Gehoert er zu einem anderen Tracker als vorher, wird der Puffer der alten Positionen geloescht (sie gehoeren zu einem anderen Boot). */
     fun setLink(c: Context, link: TrackerLink) {
-        val old = link(c)
-        if (old != null && old.trackerId != link.trackerId) java.io.File(c.filesDir, QUEUE_FILE).delete()
+        // (28.11.2026) Vergleich mit der zuletzt benutzten Tracker-ID statt mit link(c): nach "Anderen Link einrichten" (clearLink) ist link(c) null,
+        // dadurch blieb der Puffer des alten Boots stehen und wurde unter dem NEUEN Tracker hochgeladen.
+        val oldId = sp(c).getString("trackerId", null)
+        if (oldId != null && oldId != link.trackerId) java.io.File(c.filesDir, QUEUE_FILE).delete()
         sp(c).edit().putString("serverUrl", link.serverUrl).putString("trackerId", link.trackerId).putString("token", link.token)
             .remove("boatName").apply()
     }
 
+    /**
+     * Vergisst den Link. Die Tracker-ID bleibt bewusst gespeichert (ohne serverUrl/token ist link() trotzdem null): setLink() erkennt daran,
+     * ob der Puffer zum gleichen Boot gehoert (dann bleibt er, ungesendete Positionen gehen nicht verloren) oder zu einem anderen (dann geloescht).
+     * Geloescht wird erst in setLink() und nicht hier, weil ein noch laufender letzter Sendeversuch des Dienstes die Datei sonst neu schreiben koennte.
+     */
     fun clearLink(c: Context) {
-        sp(c).edit().remove("serverUrl").remove("trackerId").remove("token").remove("boatName").putBoolean("running", false).apply()
+        sp(c).edit().remove("serverUrl").remove("token").remove("boatName").putBoolean("running", false).apply()
     }
 
     fun boatName(c: Context): String? = sp(c).getString("boatName", null)
