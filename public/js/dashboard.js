@@ -86,7 +86,8 @@
       // GPS-Rauschen im Stillstand nicht in die Spur zeichnen (Tempo ~0, Position springt wenige Meter)
       const still = last && Number.isFinite(latest.speed) && latest.speed < 0.5 && Number.isFinite(last.speed) && last.speed < 0.5
         && Math.hypot((latest.lon - last.lon) * 111320 * Math.cos((last.lat * Math.PI) / 180), (latest.lat - last.lat) * 110574) < 30;
-      if ((!last || latest.ts > last.ts) && !still) entry.trail.push(latest);
+      const poor = Number.isFinite(latest.accuracy) && latest.accuracy > 50;   // schlechte Genauigkeit: nicht in die Spur zeichnen (Marker bleibt)
+      if ((!last || latest.ts > last.ts) && !still && !poor) entry.trail.push(latest);
       if (entry.trail.length > MAX_CLIENT_TRAIL) entry.trail.splice(0, entry.trail.length - MAX_CLIENT_TRAIL);
     }
     if (fullTrack) {

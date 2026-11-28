@@ -841,7 +841,7 @@ function raceView(id, { max = 3000, now = Date.now() } = {}) {
     const boat = state.boats[b.trackerId];
     const start = classStart(race, b.classId) ?? race.startTs;
     const from = start - 15 * 60000;
-    const pts = store.readHistoryCached(b.trackerId).filter((f) => f.ts >= from && f.ts <= to);
+    const pts = timing.normalizeFixes(store.readHistoryCached(b.trackerId).filter((f) => f.ts >= from && f.ts <= to));   // ohne schlechte Genauigkeit und Rauschen
     if (!pts.length) continue;
     const step = Math.max(1, Math.ceil(pts.length / max));
     const thin = pts.filter((_, i) => i % step === 0 || i === pts.length - 1)

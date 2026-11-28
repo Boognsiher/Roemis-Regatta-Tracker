@@ -9,6 +9,7 @@ services:
       - "127.0.0.1:${VPS_PORT:-3012}:3000"
     environment:
       TRUST_PROXY: "1"        # echte Besucher-IP aus X-Forwarded-For (Sperre nach Fehlversuchen wirkt pro Besucher, nicht pro Proxy)
+      ANALYSIS_TOKEN: ${ANALYSIS_TOKEN:-}   # Lese-Zugang fuer Analysen (siehe README); steht hier, weil das Update-Skript die docker-compose.yml nie ueberschreibt
     labels:
       - traefik.enable=true
       - "traefik.http.routers.regatta.rule=Host(`${REGATTA_DOMAIN:?Bitte REGATTA_DOMAIN in der .env setzen}`)"

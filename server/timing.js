@@ -150,7 +150,18 @@ function dropJitter(fixes) {
   return out;
 }
 
-/** Sortiert nach ts, entfernt doppelte Zeitstempel (Nachsenden/Wiederholung) und GPS-Rauschen im Stillstand. */
+const MAX_ACCURACY_M = 50;   // schlechtere Positionen (Handy meldet an Orten mit schlechtem Empfang bis ca. 400 m) werden nicht ausgewertet
+
+/**
+ * Verwirft Positionen mit gemeldeter Genauigkeit > MAX_ACCURACY_M (sie springen um bis zu 130 m und verfaelschen Spur, Strecke und Durchgaenge).
+ * Faellt dadurch mehr als 70 % einer Spur weg, taugt die Genauigkeitsangabe dieser Quelle nicht als Massstab (zum Beispiel HDOP-Skala): dann bleibt alles.
+ */
+function dropBadAccuracy(fixes) {
+  const good = fixes.filter((f) => !(Number.isFinite(f.accuracy) && f.accuracy > MAX_ACCURACY_M));
+  return good.length >= 0.3 * fixes.length ? good : fixes;
+}
+
+/** Sortiert nach ts, entfernt doppelte Zeitstempel (Nachsenden/Wiederholung), Positionen mit schlechter Genauigkeit und GPS-Rauschen im Stillstand. */
 function normalizeFixes(fixes) {
   const sorted = fixes
     .filter((f) => Number.isFinite(f.ts) && Number.isFinite(f.lat) && Number.isFinite(f.lon))
@@ -159,7 +170,7 @@ function normalizeFixes(fixes) {
   for (const f of sorted) {
     if (!out.length || out[out.length - 1].ts !== f.ts) out.push(f);
   }
-  return dropJitter(out);
+  return dropJitter(dropBadAccuracy(out));
 }
 
 /**
@@ -394,5 +405,5 @@ function rankEntries(entries) {
 }
 
 module.exports = {
-  makeProjector, makeUnprojector,   prepareLine, findCrossings, positionAt, normalizeFixes, dropJitter, analyzeBoat, correctedSeconds, rankEntries
+  makeProjector, makeUnprojector,   prepareLine, findCrossings, positionAt, normalizeFixes, dropJitter, dropBadAccuracy, MAX_ACCURACY_M, analyzeBoat, correctedSeconds, rankEntries
 };

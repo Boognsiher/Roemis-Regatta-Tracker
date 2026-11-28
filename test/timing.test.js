@@ -246,3 +246,16 @@ test('GPS-Rauschen im Stillstand erzeugt keine Linienkreuzung, langsames Driften
   assert.strictEqual(T.normalizeFixes(drift).length, drift.length);
   assert.strictEqual(T.findCrossings(pl, drift).length, 1);
 });
+
+test('Schlechte Genauigkeit (> 50 m) wird verworfen, ausser sie betrifft fast die ganze Spur', () => {
+  const mk = (n, accFn) => Array.from({ length: n }, (_, i) => ({ ts: 1000 * i, ...pt(i * 5, 0), speed: 5, accuracy: accFn(i) }));
+  // Einzelne Ausreisser mit 300 m Genauigkeit (Handy an schlechtem Ort) fallen weg, die guten bleiben
+  const mixed = mk(20, (i) => (i % 4 === 0 ? 300 : 4));
+  const out = T.normalizeFixes(mixed);
+  assert.strictEqual(out.length, 15);
+  assert.ok(out.every((f) => f.accuracy <= 50));
+  // Quellen ohne Genauigkeitsangabe bleiben unberuehrt
+  assert.strictEqual(T.normalizeFixes(mk(10, () => undefined)).length, 10);
+  // Faellt mehr als 70 % weg, taugt die Angabe nicht als Massstab (z.B. andere Skala): alles bleibt
+  assert.strictEqual(T.normalizeFixes(mk(10, (i) => (i < 8 ? 90 : 4))).length, 10);
+});
