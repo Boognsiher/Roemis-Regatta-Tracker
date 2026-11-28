@@ -499,6 +499,26 @@
     return `<div class="card" data-race="${r.id}" style="background:var(--panel-2)">${head}${controls}${settings}${table}${footer}${links}</div>`;
   }
 
+  // Datenqualitaet (server/quality.js): Ampel + Kennzahlen fuer die Wettfahrtleitung. Die Gruende stehen bei gelb/rot schon als Satz
+  // in den Warnungen; hier zusaetzlich im Tooltip und die nackten Zahlen, damit man selbst beurteilen kann. Nur Hinweis, keine Streichung.
+  const Q_TXT = { ok: 'gruen', warn: 'gelb', bad: 'rot' };
+  const Q_SRC = { tracker: 'LoRa/T-Beam', handy: 'Handy', gemischt: 'gemischt' };
+  function qualityHtml(q) {
+    if (!q) return '';
+    const m = q.metrics || {};
+    const n1 = (v, unit) => (v == null ? '–' : `${String(Math.round(v * 10) / 10).replace('.', ',')} ${unit}`);
+    const facts = [
+      q.source ? `Quelle ${Q_SRC[q.source] || q.source}` : null,
+      `Takt ${n1(m.rateSec, 's')}`,
+      `Luecke max ${n1(m.maxGapSec, 's')}`,
+      m.gapAtEventsSec != null ? `an Ereignissen ${n1(m.gapAtEventsSec, 's')}${m.gapAtEventLabel ? ` (${m.gapAtEventLabel})` : ''}` : null,
+      `Genauigkeit ${n1(m.medianAccuracyM, 'm')}`,
+      m.droppedShare != null ? `verworfen ${Math.round(m.droppedShare * 100)} %${m.dropped && m.dropped.shadow ? ` (davon Zweitquelle ${m.dropped.shadow})` : ''}` : null
+    ].filter(Boolean).join(' · ');
+    const tip = `Datenqualitaet ${Q_TXT[q.level]}${q.reasons.length ? `\n${q.reasons.join('\n')}` : ''}`;
+    return `<div class="hint"><span class="q-dot q-${q.level}" title="${esc(tip)}"></span>Daten ${Q_TXT[q.level]}: ${esc(facts)}</div>`;
+  }
+
   function entryRows(r, e) {
     const unc = e.uncertaintyMs != null ? ` ±${(e.uncertaintyMs / 2000).toFixed(1)}s` : '';
     const key = `${r.id}:${e.trackerId}`;
@@ -516,7 +536,7 @@
         <button class="ov-save">Speichern</button></div></td></tr>` : '';
     return `<tr>
       <td class="num"><b>${e.rank ?? ''}</b></td>
-      <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? (m.wrongSide ? ' ⚠' : ' ✓') : ' ✗'}`).join(' · ')}</div>` : ''}${warn}${note}</td>
+      <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? (m.wrongSide ? ' ⚠' : ' ✓') : ' ✗'}`).join(' · ')}</div>` : ''}${qualityHtml(e.quality)}${warn}${note}</td>
       <td>${esc(e.className)} / ${e.yardstick}</td>
       <td><span class="badge">${e.status}</span></td>
       <td class="num hint">${lapTxt}</td>

@@ -191,6 +191,26 @@ Berechnung:
 
 Tests der Rechenlogik: `npm test`.
 
+### Datenqualität
+
+Je Boot und Wettfahrt beurteilt der Server, ob die Spur gut genug für eine faire Wertung ist (`server/quality.js`, im Ergebnis als `entry.quality`). **Das ist nur eine Warnung, keine automatische Streichung:** Status, Zeiten und Rangfolge bleiben unverändert, die Wettfahrtleitung entscheidet (wie bei der Warnung für die falsche Bojenseite).
+
+Beurteilt wird das Zeitfenster vom Start-Durchgang bis zum Ziel (ohne Ziel: bis Zielschluss, bei laufender Wettfahrt bis jetzt), auf den Positionen **nach** den bestehenden Filtern (Genauigkeit > 50 m, Rauschen im Stillstand, Zweitquelle).
+
+| Kennzahl | Bedeutung | Gelb ab | Rot ab |
+|---|---|---|---|
+| `rateSec` | mittleres Intervall zwischen den Punkten | > 5 s | > 10 s |
+| `maxGapSec` | größte Lücke im Zeitfenster (auch ein leerer Rand, z. B. Tracker vor dem Zielschluss ausgefallen) | > 15 s | > 30 s |
+| `gapAtEventsSec` | größte Lücke im Umfeld von ±30 s um Start, Ziel, Rundenenden und jede erkannte Boje | > 10 s | > 20 s |
+| `medianAccuracyM` | Median der gemeldeten Genauigkeit (nur Punkte mit Angabe) | > 10 m | > 20 m |
+| `droppedShare` | Anteil der von den Filtern verworfenen Punkte | > 10 % | > 30 % |
+
+- Ergebnis: `level` `ok` / `warn` / `bad` (der schlechteste Einzelwert zählt), `reasons` als Sätze mit Zahlen (z. B. "Lücke von 28 s am Ziel", "Genauigkeit im Mittel 22 m", "34 % der Punkte verworfen (schlechte Genauigkeit)") und `source`: `tracker`, `handy` oder `gemischt` (nach abgedeckter Zeit, nicht nach Punktzahl).
+- Bei Gelb/Rot steht zusätzlich ein Satz in den Warnungen ("Datenqualität gelb/rot: ... - bitte prüfen").
+- `droppedShare` enthält alle drei Filter; die Aufschlüsselung steht in `metrics.dropped`. **Für die Ampel zählen nur Genauigkeit und Rauschen**, nicht die Zweitquelle: Beim Master werden die Handy-Punkte neben dem 1-Hz-T-Beam absichtlich verworfen (rund 17 %); das ist Redundanz, kein Datenmangel.
+- Anzeige: Ampel neben dem Boot in `/results.html` (Gründe im Tooltip), Ampel mit Kennzahlen in der Ergebnis-Tabelle von `/regatta.html`, Zeile "Datenqualität" in den Boots-Details der Rangliste auf der Live-Karte.
+- Grenzwerte stehen in **einem** Objekt `QUALITY` in `server/quality.js` (später einstellbar). Mit simulierten Spuren getestet (`test/quality.test.js`); auf dem Wasser noch nicht geprüft.
+
 ### Automatischer Start und automatisches Ende (ohne Startsignal)
 
 Beim Anlegen einer Wettfahrt "Start und Ende automatisch erkennen" ankreuzen. Dann braucht es keinen Knopfdruck zum Start:

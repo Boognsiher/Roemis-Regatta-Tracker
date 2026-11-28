@@ -111,3 +111,62 @@ test('Best-of einer Wettfahrt: Boote im Ziel, schnellstes Boot, Strecke', () => 
   const shortest = stats.awards.find((a) => a.title === 'Kuerzeste Strecke');
   assert.ok(shortest.boat.includes('Schnell') && shortest.value > 1500 && shortest.value < 1700, JSON.stringify(shortest));   // 2 x 800 m zwischen Start- und Zieldurchgang
 });
+
+test('Ergebnis: entry.quality je Boot; Luecke am Ziel gibt Warnung, Rangfolge bleibt nach der Zeit', () => {
+  const cls3 = regatta.addClass('YS100b', 100);
+  const e = store.createTracker('Luecke');
+  const f = store.createTracker('Sauber');
+  regatta.registerBoat(e.id, { sailNo: '11', helm: 'e', classId: cls3.id });
+  regatta.registerBoat(f.id, { sailNo: '12', helm: 'f', classId: cls3.id });
+  const T2 = GUN + 10 * 3600000;
+  regatta.createCourse({ kind: 'bounce' });
+  regatta.setLine({ a: pt(-50, 0), b: pt(50, 0), mark: pt(0, 400) });
+  regatta.setCourse([pt(0, 800)], 250, true);
+  // Hin zur Boje und zurueck durch die Linie, 1 Punkt pro Sekunde, Genauigkeit 4 m
+  const leg = (t0, speed) => {
+    const out = [];
+    let t = t0;
+    for (const [y0, y1] of [[-200, 800], [800, -200]]) {
+      const n = Math.round(Math.abs(y1 - y0) / speed);
+      for (let k = 0; k < n; k += 1) { out.push({ ...pt(0, y0 + (y1 - y0) * (k / n)), ts: t, accuracy: 4, back: y1 < y0 }); t += 1000; }
+    }
+    out.push({ ...pt(0, -200), ts: t, accuracy: 4, back: true });
+    return out;
+  };
+  // "Luecke" ist schneller (6 m/s), hat aber auf dem Rueckweg keine Punkte zwischen y = -84 und +84 m: 28 s Luecke um den Zieldurchgang
+  for (const p of leg(T2, 6)) {
+    const y = (p.lat - lat0) * mLat;
+    if (p.back && Math.abs(y) < 84) continue;
+    const { back, ...fix } = p;
+    store.recordPosition(e.id, fix);
+  }
+  for (const p of leg(T2, 4)) { const { back, ...fix } = p; store.recordPosition(f.id, fix); }
+  const race3 = regatta.createRace({ name: 'Qualitaet', laps: 1, lapMode: 'bounce', startTs: T2, cutoffMinutes: 60 });
+  const res = regatta.computeResults(race3, T2 + 2 * 3600000);
+  const ee = res.entries.find((x) => x.trackerId === e.id);
+  const ef = res.entries.find((x) => x.trackerId === f.id);
+
+  // Wertung unveraendert: beide im Ziel, das schnellere Boot vorn - trotz roter Datenqualitaet
+  assert.strictEqual(ee.status, 'FIN');
+  assert.strictEqual(ef.status, 'FIN');
+  assert.ok(ee.elapsedSec < ef.elapsedSec);
+  assert.strictEqual(ee.rank, 1);
+  assert.strictEqual(ef.rank, 2);
+
+  assert.ok(ee.quality && ef.quality, 'jeder Eintrag hat quality');
+  assert.strictEqual(ef.quality.level, 'ok', ef.quality.reasons.join('; '));
+  assert.ok(!ef.warnings.some((w) => /Datenqualität/.test(w)));
+  assert.strictEqual(ee.quality.level, 'bad');
+  assert.ok(ee.quality.metrics.gapAtEventsSec >= 27, `Luecke ${ee.quality.metrics.gapAtEventsSec}`);
+  assert.ok(ee.warnings.some((w) => /^Datenqualität rot: .*am Ziel.* - bitte prüfen$/.test(w)), ee.warnings.join(' | '));
+  assert.ok(ee.warnings.some((w) => /Zieldurchgang unsicher/.test(w)), 'bestehende Warnung bleibt');
+
+  // Boote anderer Klassen/Tests ohne Daten in diesem Zeitfenster: quality vorhanden, aber keine zusaetzliche Warnung
+  const silent = res.entries.filter((x) => x.quality && x.quality.metrics.pointsRaw === 0);
+  assert.ok(silent.every((x) => !x.warnings.some((w) => /Datenqualität/.test(w))));
+
+  // Live-Karte: Qualitaet aller Boote kommt mit dem Best-of
+  const stats = regatta.raceStats(race3.id, T2 + 2 * 3600000);
+  assert.strictEqual(stats.quality[e.id].level, 'bad');
+  assert.strictEqual(stats.quality[f.id].level, 'ok');
+});
