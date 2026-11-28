@@ -260,6 +260,11 @@ table.results td.num { font-variant-numeric: tabular-nums; white-space: nowrap; 
 .badge.official { background: #3cb44b; color: #06131f; border-color: #3cb44b; }
 .badge.warn { background: #f58231; color: #06131f; border-color: #f58231; }
 .warn-text { color: #f58231; font-size: 0.78rem; }
+/* Datenqualitaets-Ampel je Boot (server/quality.js): nur Hinweis, aendert die Wertung nicht. Text daneben, damit es nicht nur an der Farbe haengt. */
+.q-dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; vertical-align: middle; margin: 0 0.25rem; cursor: help; border: 1px solid rgba(0, 0, 0, 0.35); }
+.q-dot.q-ok { background: #3cb44b; }
+.q-dot.q-warn { background: #ffd23f; }
+.q-dot.q-bad { background: #e6194b; }
 #line-map { height: 340px; border-radius: 8px; margin-bottom: 0.6rem; }
 .countdown { font-size: 2rem; font-variant-numeric: tabular-nums; font-weight: 700; }
 

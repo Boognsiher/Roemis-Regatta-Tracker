@@ -434,5 +434,5 @@ function rankEntries(entries) {
 }
 
 module.exports = {
-  makeProjector, makeUnprojector,   prepareLine, findCrossings, positionAt, normalizeFixes, dropJitter, dropBadAccuracy, dropShadowSource, MAX_ACCURACY_M, analyzeBoat, correctedSeconds, rankEntries
+  makeProjector, makeUnprojector,   prepareLine, findCrossings, positionAt, normalizeFixes, dropJitter, dropBadAccuracy, dropShadowSource, sourceOf, MAX_ACCURACY_M, analyzeBoat, correctedSeconds, rankEntries
 };

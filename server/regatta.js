@@ -11,6 +11,7 @@ const store = require('./store');
 const timing = require('./timing');
 const courseLib = require('./course');
 const autostart = require('./autostart');
+const quality = require('./quality');
 
 const FILE = path.join(store.DATA_DIR, 'regatta.json');
 const genId = customAlphabet('23456789abcdefghjkmnpqrstuvwxyz', 6);
@@ -685,6 +686,25 @@ function computeResults(race, now = Date.now()) {
     }
     if (ov.status) status = ov.status;
 
+    // Datenqualitaet (nur Warnung, aendert weder Status noch Zeit noch Rang): Zeitfenster Start-Durchgang bis Ziel bzw. Zielschluss
+    // (bei laufender Wettfahrt bis jetzt). Gemessen wird am GPS-Ziel (a.finishTs), nicht an einer manuell gesetzten Zielzeit -
+    // gerade dann will die Wettfahrtleitung sehen, wie gut die Spur war.
+    let q = null;
+    if (pl && cStart != null) {
+      const startPass = a.startCrossingTs ?? a.startPassTs ?? null;
+      const from = startPass ?? cStart;
+      const to = a.finishTs ?? Math.min(cEnd, now);
+      const events = [];
+      if (startPass != null) events.push({ label: 'Start', ts: startPass });
+      (a.laps || []).forEach((l) => { if (l.ts !== a.finishTs) events.push({ label: `Runde ${l.n}`, ts: l.ts }); });
+      if (a.finishTs != null) events.push({ label: 'Ziel', ts: a.finishTs });
+      (markResults || []).forEach((m) => { if (m.ts != null) events.push({ label: `Boje ${m.n}`, ts: m.ts }); });
+      q = quality.boatQuality({ fixesRaw: fixes, from, to, events });
+      // Ohne jede Position steht schon "Keine GPS-Daten ab dem Start" in den Warnungen; kein zweiter Satz dazu.
+      const qw = q.metrics.pointsRaw > 0 ? quality.qualityWarning(q) : null;
+      if (qw) warnings.push(qw);
+    }
+
     let correctedSec = null;
     if (status === 'FIN' && elapsedSec != null) {
       correctedSec = timing.correctedSeconds(elapsedSec, cls.yardstick) + (ov.penaltySec || 0);
@@ -709,6 +729,7 @@ function computeResults(race, now = Date.now()) {
       lapInfo: a.lapInfo || null,
       startCrossingTs: a.startCrossingTs ?? a.startPassTs ?? null,
       marks: markResults,
+      quality: q,
       warnings
     });
   }
@@ -867,8 +888,11 @@ function raceView(id, { max = 3000, now = Date.now() } = {}) {
 function raceStats(id, now = Date.now()) {
   const race = getRace(id);
   const res = computeResults(race, now);
-  const out = { race: { id: race.id, name: race.name, startTs: race.startTs }, awards: [], boats: [] };
+  const out = { race: { id: race.id, name: race.name, startTs: race.startTs }, awards: [], boats: [], quality: {} };
   if (race.startTs == null) return out;
+  // Datenqualitaet aller Boote (auch nicht im Ziel) fuer die Boots-Details der Live-Karte; die Live-Rangliste selbst rechnet sie nicht
+  // (alle 5 s, waere zu teuer), das Best-of wird ohnehin aus computeResults geladen.
+  for (const e of res.entries) if (e.quality) out.quality[e.trackerId] = { level: e.quality.level, reasons: e.quality.reasons, source: e.quality.source };
   const KN = 1.9438445;
   const metres = (a, b) => Math.hypot((b.lat - a.lat) * 111320, (b.lon - a.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180));
   for (const e of res.entries) {

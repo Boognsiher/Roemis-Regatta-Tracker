@@ -6,6 +6,9 @@
     const t = Math.round(s);
     return `${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
   };
+  // Datenqualitaet als kleine Ampel; die Gruende stehen im Tooltip (oeffentliche Seite: knapp halten, Details hat die Wettfahrtleitung)
+  const Q_LABEL = { ok: 'gut', warn: 'gelb - bitte prüfen', bad: 'rot - bitte prüfen' };
+  const qDot = (q) => (q ? `<span class="q-dot q-${q.level}" title="${esc(`Datenqualität ${Q_LABEL[q.level]}${q.reasons.length ? `\n${q.reasons.join('\n')}` : ''}`)}" aria-label="Datenqualität ${Q_LABEL[q.level]}"></span>` : '');
 
   async function load() {
     const regRes = await fetch('/api/regatta');
@@ -22,7 +25,7 @@
           <a href="/api/races/${r.id}/results.csv" style="color:var(--accent)">CSV</a></div>
         <table class="results"><thead><tr><th>Rang</th><th>Boot</th><th>Klasse</th><th>Gesegelt</th><th>Berechnet</th></tr></thead><tbody>
         ${res.entries.map((e) => `<tr><td class="num"><b>${e.rank ?? e.status}</b></td>
-          <td>${esc(e.sailNo)} ${esc(e.name)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? (m.wrongSide ? ' ⚠' : ' ✓') : (m.closestM != null ? ` ✗<span class="hint">(${m.closestM} m)</span>` : ' ✗')}`).join(' · ')}</div>` : ''}</td>
+          <td>${esc(e.sailNo)} ${esc(e.name)}${qDot(e.quality)}<div class="hint">${esc(e.helm)}</div>${e.marks ? `<div class="hint">Bojen: ${e.marks.map((m) => `${m.n}${m.ts ? (m.wrongSide ? ' ⚠' : ' ✓') : (m.closestM != null ? ` ✗<span class="hint">(${m.closestM} m)</span>` : ' ✗')}`).join(' · ')}</div>` : ''}</td>
           <td>${esc(e.className)} (${e.yardstick})</td>
           <td class="num">${fmt(e.elapsedSec)}</td><td class="num"><b>${fmt(e.correctedSec)}</b></td></tr>`).join('')}
         </tbody></table></div>`);

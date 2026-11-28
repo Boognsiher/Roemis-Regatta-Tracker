@@ -380,6 +380,30 @@
   const fmtKn = (v) => (v == null ? '–' : `${v.toFixed(1).replace('.', ',')} kn`);
   const fmtGapSec = (s) => `${Math.floor(Math.abs(s) / 60)}:${String(Math.round(Math.abs(s)) % 60).padStart(2, '0')}`;
 
+  // ---- Datenqualitaet je Boot (server/quality.js) in den Boots-Details ----
+  // Die Live-Rangliste rechnet sie nicht (alle 5 s, zu teuer). Quelle: im Ergebnis-Ersatz direkt am Eintrag, in der Wettfahrt-Ansicht
+  // aus dem Best-of (/stats liefert quality je Boot mit), sonst beim Klick auf ein Boot einmal /results laden und 30 s merken.
+  let qualityCache = { raceId: null, at: 0, map: {}, loading: false };
+  const Q_TXT = { ok: 'gut', warn: 'gelb – bitte prüfen', bad: 'rot – bitte prüfen' };
+  function qualityFor(e) {
+    if (e.quality) return e.quality;
+    if (raceMode && raceStatsData && raceStatsData.quality) return raceStatsData.quality[e.trackerId] || null;
+    const raceId = lastLive && lastLive.race ? lastLive.race.id : null;
+    return raceId && qualityCache.raceId === raceId ? qualityCache.map[e.trackerId] || null : null;
+  }
+  async function loadQuality() {
+    const raceId = !raceMode && lastLive && lastLive.race ? lastLive.race.id : null;
+    if (!raceId || qualityCache.loading || (qualityCache.raceId === raceId && Date.now() - qualityCache.at < 30000)) return;
+    qualityCache.loading = true;
+    try {
+      const res = await fetch(`/api/races/${encodeURIComponent(raceId)}/results`);
+      if (!res.ok) return;
+      const data = await res.json();
+      qualityCache = { raceId, at: Date.now(), map: Object.fromEntries((data.entries || []).filter((x) => x.quality).map((x) => [x.trackerId, x.quality])), loading: false };
+      renderRankBox();
+    } catch (err) { /* ohne Qualitaetsangabe weiter */ } finally { qualityCache.loading = false; }
+  }
+
   /** Detailblock zu einem Boot: Tempo, Kurs, VMG, naechste Boje, Boot davor/dahinter. */
   function rankDetailHtml(e) {
     const rows = [];
@@ -403,6 +427,11 @@
     if (e.rankAhead) row('Wertung: Vordermann', `${escHtml(e.rankAhead.name)} · ${fmtGapSec(e.rankAhead.gapSec)} vorn`);
     if (e.rankBehind) row('Wertung: Hintermann', `${escHtml(e.rankBehind.name)} · ${fmtGapSec(e.rankBehind.gapSec)} zurueck`);
     if (e.lastFixAgeSec != null && e.lastFixAgeSec > 15) row('Letzte Position', `vor ${Math.round(e.lastFixAgeSec)} s`);
+    const q = qualityFor(e);
+    if (q) {
+      row('Datenqualität', `<span class="q-dot q-${q.level}"></span>${Q_TXT[q.level] || q.level}`);
+      if (q.reasons && q.reasons.length) rows.push(`<div class="hint" style="text-align:right">${q.reasons.map(escHtml).join('<br>')}</div>`);
+    }
     return `<div class="rank-detail"><div class="rank-dhead"><b>${name}</b> <span class="hint">${escHtml(e.className || '')} · Platz ${e.rank ?? '–'}</span><button type="button" class="rank-close" aria-label="Details schliessen">&times;</button></div>${rows.join('')}</div>`;
   }
 
@@ -420,7 +449,7 @@
   rankBox.addEventListener('click', (ev) => {
     if (ev.target.closest('.rank-close')) { selectedRankId = null; renderRankBox(); return; }
     const row = ev.target.closest('.rank-row');
-    if (row) { selectedRankId = selectedRankId === row.dataset.id ? null : row.dataset.id; renderRankBox(); }
+    if (row) { selectedRankId = selectedRankId === row.dataset.id ? null : row.dataset.id; renderRankBox(); if (selectedRankId) loadQuality(); }
   });
   rankBox.addEventListener('change', (ev) => {
     if (ev.target.classList.contains('rank-race')) selectRace(ev.target.value || null);
