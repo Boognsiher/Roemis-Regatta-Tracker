@@ -53,6 +53,35 @@ const authGuard = createAuthGuard({
 app.use('/api/admin', authGuard.middleware);
 app.use('/api/gateway', authGuard.middleware);
 
+// Lese-Zugang fuer Analysen (ANALYSIS_TOKEN, Header x-analysis-token): darf ausschliesslich GET auf wenige Lese-Pfade (Wettfahrten, Ergebnisse, Spuren, Exporte).
+// Alles andere (Schreiben, Tracker-Tokens, Admin-Verwaltung) bleibt gesperrt; ein falscher oder zu kurzer Token zaehlt wie jedes falsche Token fuer die Sperre.
+const ANALYSIS_TOKEN = (process.env.ANALYSIS_TOKEN || '').length >= 24 ? process.env.ANALYSIS_TOKEN : '';
+if (process.env.ANALYSIS_TOKEN && !ANALYSIS_TOKEN) console.warn('[WARNUNG] ANALYSIS_TOKEN ist kuerzer als 24 Zeichen und wird ignoriert.');
+const ANALYSIS_READ_PATHS = [
+  /^\/api\/regatta$/,
+  /^\/api\/trackers$/,
+  /^\/api\/trackers\/[^/]+(\/track)?$/,
+  /^\/api\/races\/[^/]+\/(results|results\.csv|live|view|stats)$/,
+  /^\/api\/admin\/export\/(tracks\.csv|tracks\.gpx|course\.gpx)$/,
+  /^\/api\/admin\/history\/summary$/,
+  /^\/api\/admin\/courses\/[^/]+\/export$/
+];
+app.use('/api', (req, res, next) => {
+  const supplied = req.get('x-analysis-token');
+  if (!supplied) return next();
+  const ip = authGuard.clientIp(req);
+  if (authGuard.blockedFor(ip) > 0) return res.status(429).json({ error: 'Zu viele Fehlversuche - bitte spaeter erneut versuchen' });
+  if (!ANALYSIS_TOKEN || !safeEqual(supplied, ANALYSIS_TOKEN)) {
+    authGuard.fail(ip);
+    return res.status(401).json({ error: 'Ungueltiges Analyse-Token' });
+  }
+  if ((req.method !== 'GET' && req.method !== 'HEAD') || !ANALYSIS_READ_PATHS.some((re) => re.test(req.baseUrl + req.path))) {
+    return res.status(403).json({ error: 'Der Analyse-Zugang darf nur lesen (Wettfahrten, Ergebnisse, Spuren, Exporte)' });
+  }
+  req.analysis = true;
+  next();
+});
+
 // Seiten fuer Zuschauer nur mit Anmeldung (sonst Weiterleitung zur Login-Seite). Verwaltung, Gateway- und Tracker-Seiten
 // sind nicht betroffen: dort schuetzen Tokens die Daten.
 const VIEWER_PAGES = new Set(['/', '/index.html', '/results.html', '/live.html']);
@@ -82,6 +111,7 @@ function isSecure(req) {
 // Das Token wird nur noch im Header akzeptiert (nicht in der URL, sonst landet es in Logs/Verlauf).
 // Alternativ gilt eine Admin-Anmeldung per Cookie (POST /api/login mit dem Admin-Token).
 function requireAdmin(req, res, next) {
+  if (req.analysis) return next();          // nur auf den freigegebenen Lese-Pfaden (siehe ANALYSIS_READ_PATHS)
   const supplied = req.get('x-admin-token') || '';
   if (ADMIN_TOKEN && supplied && safeEqual(supplied, ADMIN_TOKEN)) return next();
   if (ADMIN_TOKEN && sessions.fromRequest(req) === 'admin') return next();
@@ -91,6 +121,7 @@ function requireAdmin(req, res, next) {
 // Lesezugriff auf Karte/Ergebnisse: ohne VIEWER_PASSWORD offen; sonst Anmeldung (Cookie) ODER Admin-/Gateway-Token
 // im Header ODER Token eines Trackers (fuer die Tracker-Seite im Handy).
 function requireViewer(req, res, next) {
+  if (req.analysis) return next();
   if (!sessions.enabled) return next();
   if (sessions.fromRequest(req)) return next();
   const admin = req.get('x-admin-token') || '';

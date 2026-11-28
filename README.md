@@ -326,6 +326,12 @@ Die **Zeitleiste** unten spielt die Wettfahrt ab (Schieber, Play/Pause, 5x bis 2
 
 **Best-of** (aufklappbar im Ranglisten-Feld, `GET /api/races/:id/stats`): schnellstes Boot (gesegelt und nach Yardstick), Hoechstgeschwindigkeit, hoechste Durchschnittsgeschwindigkeit, kuerzeste und laengste Strecke. Gezaehlt wird vom Start- bis zum Zieldurchgang, nur Boote im Ziel; das Tempo kommt aus den Positionen (10-s-Fenster), weil LoRa-Tracker keine Geschwindigkeit mitschicken.
 
+### Lese-Zugang fuer Analysen (ANALYSIS_TOKEN)
+
+Fuer Auswertungen (zum Beispiel durch Claude) gibt es einen **reinen Lese-Zugang**, getrennt vom Admin-Token. In der `.env` auf dem Server `ANALYSIS_TOKEN` setzen (mindestens 24 Zeichen, erzeugen mit `openssl rand -hex 24`); leer = aus. Wer ihn als Header `x-analysis-token` mitschickt, darf **nur GET** auf diese Pfade:
+`/api/regatta`, `/api/trackers`, `/api/trackers/:id` und `/track`, `/api/races/:id/results|results.csv|live|view|stats`, `/api/admin/export/tracks.csv|tracks.gpx|course.gpx`, `/api/admin/history/summary`, `/api/admin/courses/:id/export`.
+Alles andere (Schreiben, die Admin-Verwaltung mit den Tracker-Tokens, Gateway) antwortet mit 403; ein falscher oder zu kurzer Token mit 401 und zaehlt fuer die Sperre nach Fehlversuchen. Zum Entziehen den Wert in der `.env` leeren oder aendern und den Container neu starten (`docker compose up -d`).
+
 ## Konfiguration (Umgebungsvariablen)
 
 | Variable | Standard | Beschreibung |
