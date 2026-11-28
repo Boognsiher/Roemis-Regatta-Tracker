@@ -264,6 +264,7 @@ function recordPosition(id, pos) {
     battery: pos.battery ?? null, // 0..1
     ts: pos.ts || Date.now()
   };
+  if (pos.src) entry.src = pos.src;   // 'own' = Handy/eigener Tracker-Token, 'gw' = ueber das Gateway (LoRa/Master); siehe timing.dropShadowSource
   appendHistory(id, entry);
   const trail = positions[id].trail;
   // Nachgesendete (aeltere) Fixes duerfen die "aktuelle" Position nicht ueberschreiben.

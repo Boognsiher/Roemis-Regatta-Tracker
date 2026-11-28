@@ -161,7 +161,36 @@ function dropBadAccuracy(fixes) {
   return good.length >= 0.3 * fixes.length ? good : fixes;
 }
 
-/** Sortiert nach ts, entfernt doppelte Zeitstempel (Nachsenden/Wiederholung), Positionen mit schlechter Genauigkeit und GPS-Rauschen im Stillstand. */
+const SHADOW_WINDOW_MS = 5000;
+
+/** Quelle einer Position: 'own' = Handy/eigener Tracker-Token, 'gw' = ueber das Gateway (LoRa-Tracker, Master-T-Beam). Altdaten ohne Kennzeichnung: mit Geschwindigkeit = Handy. */
+function sourceOf(f) {
+  if (f.src === 'own' || f.src === 'gw') return f.src;
+  return Number.isFinite(f.speed) ? 'own' : 'gw';
+}
+
+/**
+ * Liefert ein Tracker (zum Beispiel der Master mit eigenem T-Beam-GPS) Positionen aus zwei Quellen, die sich abwechseln (Handy alle 5 s, T-Beam jede Sekunde, gegeneinander
+ * um Sekunden versetzt), zackt die Spur und die Strecke waechst (gemessen: 197 km statt 121 km). Dann gilt die Gateway-Quelle (dichter, vom Master): Handy-Positionen, zu denen es
+ * eine Gateway-Position innerhalb von 5 s gibt, entfallen. Wo die Gateway-Quelle fehlt (Luecke, GPS-Zeit noch nicht verlaesslich), bleiben die Handy-Positionen.
+ * Spuren aus nur einer Quelle bleiben unveraendert. fixes muss nach ts sortiert sein.
+ */
+function dropShadowSource(fixes) {
+  const gw = [];
+  let hasOwn = false;
+  for (const f of fixes) { if (sourceOf(f) === 'gw') gw.push(f.ts); else hasOwn = true; }
+  if (!hasOwn || !gw.length) return fixes;
+  let j = -1;                                                   // Index der letzten Gateway-Zeit <= ts der aktuellen Position
+  return fixes.filter((f) => {
+    if (sourceOf(f) === 'gw') return true;
+    while (j + 1 < gw.length && gw[j + 1] <= f.ts) j += 1;
+    const before = j >= 0 ? f.ts - gw[j] : Infinity;
+    const after = j + 1 < gw.length ? gw[j + 1] - f.ts : Infinity;
+    return Math.min(before, after) > SHADOW_WINDOW_MS;
+  });
+}
+
+/** Sortiert nach ts, entfernt doppelte Zeitstempel (Nachsenden/Wiederholung), Positionen mit schlechter Genauigkeit, die Zweitquelle und GPS-Rauschen im Stillstand. */
 function normalizeFixes(fixes) {
   const sorted = fixes
     .filter((f) => Number.isFinite(f.ts) && Number.isFinite(f.lat) && Number.isFinite(f.lon))
@@ -170,7 +199,7 @@ function normalizeFixes(fixes) {
   for (const f of sorted) {
     if (!out.length || out[out.length - 1].ts !== f.ts) out.push(f);
   }
-  return dropJitter(dropBadAccuracy(out));
+  return dropJitter(dropShadowSource(dropBadAccuracy(out)));
 }
 
 /**
@@ -405,5 +434,5 @@ function rankEntries(entries) {
 }
 
 module.exports = {
-  makeProjector, makeUnprojector,   prepareLine, findCrossings, positionAt, normalizeFixes, dropJitter, dropBadAccuracy, MAX_ACCURACY_M, analyzeBoat, correctedSeconds, rankEntries
+  makeProjector, makeUnprojector,   prepareLine, findCrossings, positionAt, normalizeFixes, dropJitter, dropBadAccuracy, dropShadowSource, MAX_ACCURACY_M, analyzeBoat, correctedSeconds, rankEntries
 };

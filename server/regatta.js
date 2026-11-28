@@ -334,6 +334,14 @@ function resolveFinishLine(race) {
  * Grobe Bojen-Strecke (in Fahrtreihenfolge fuer EINE Runde, ohne Start/Ziel-Linie). Die genauen Positionen findet das
  * System selbst aus den Logs der Boote (Wendepunkte in der Naehe der gezeichneten Punkte).
  */
+const DEFAULT_RADIUS_M = 250;         // Standard-Suchradius (Rundkurs/Hin-und-zurueck)
+const LONG_COURSE_RADIUS_M = 400;     // Langstrecke: man faehrt nicht so nah an die Boje; der alte Standardwert 250 wird dort als 400 gewertet
+/** Wirksamer Radius der Bojenpruefung. Langstrecke: Standardwert 250 -> 400 m; jeder andere eingegebene Wert gilt unveraendert. */
+function markRadius(race) {
+  const r = (race.course && race.course.radiusM) || DEFAULT_RADIUS_M;
+  return race.lapMode === 'distance' && r === DEFAULT_RADIUS_M ? LONG_COURSE_RADIUS_M : r;
+}
+
 function setCourse(marks, radiusM, exact) {
   if (marks === null) { state.course = null; const a0 = activeCourse(); if (a0) a0.course = null; save(); return null; }
   // Eintrag = einzelne Boje {lat, lon} oder Tor {a: {lat, lon}, b: {lat, lon}} (zwei Marken, Durchfahrt zaehlt)
@@ -652,12 +660,12 @@ function computeResults(race, now = Date.now()) {
     let markResults = null;
     if (distance && pl && a.startPassTs && race.course && race.course.marks && race.course.marks.length) {
       markResults = courseLib.checkMarks({
-        pl, fixes, approxMarks: race.course.marks, startPassTs: a.startPassTs, endTs: a.finishTs || cEnd, options: { radiusM: race.course.radiusM || 250 }
+        pl, fixes, approxMarks: race.course.marks, startPassTs: a.startPassTs, endTs: a.finishTs || cEnd, options: { radiusM: markRadius(race) }
       }).map((m) => ({ n: m.k + 1, ts: m.t, passOnly: m.passOnly, inOrder: m.inOrder, rounding: m.rounding, side: m.side, wrongSide: m.wrongSide, closestM: m.closestM }));
       const missing = markResults.filter((m) => m.ts == null).map((m) => m.n);
       if (missing.length) {
         const near = markResults.filter((m) => m.ts == null && m.closestM != null).map((m) => `Boje ${m.n}: ${m.closestM} m`).join(', ');
-        a.warnings = a.warnings.concat(`Boje ${missing.join(', ')} nicht gerundet/passiert (Radius ${race.course.radiusM || 250} m${near ? `; naechste Annaeherung ${near}` : ''}) - bitte pruefen`);
+        a.warnings = a.warnings.concat(`Boje ${missing.join(', ')} nicht gerundet/passiert (Radius ${markRadius(race)} m${near ? `; naechste Annaeherung ${near}` : ''}) - bitte pruefen`);
       }
       const SIDE = { port: 'an Backbord', starboard: 'an Steuerbord' };
       markResults.filter((m) => m.wrongSide).forEach((m) => {
@@ -776,7 +784,7 @@ function computeLive(race, now = Date.now()) {
     startTs, laps: race.laps, minLapSeconds: race.minLapSeconds, endTs: startTs == null ? null : classCutoffTs(race, startTs), lapMode: race.lapMode || 'bounce', startOnExtension: race.startOnExtension === true,
     finishLine: race.lapMode === 'distance' ? (resolveFinishLine(race) || null) : null
   });
-  const opts = race.course ? { radiusM: race.course.radiusM || 250, exact: !!race.course.exact } : {};
+  const opts = race.course ? { radiusM: markRadius(race), exact: !!race.course.exact } : {};
   const rank = (args) => courseLib.liveRanking({ line: race.line, approxMarks: race.course ? race.course.marks : [], now, options: opts, ...args });
 
   let ranking;
@@ -828,7 +836,7 @@ function raceView(id, { max = 3000, now = Date.now() } = {}) {
   const cutoffMs = (race.cutoffMinutes || 180) * 60000;
   const out = {
     race: { id: race.id, name: race.name, startTs: race.startTs, official: race.official, running: isRunning(race, now), auto: !!race.auto, lapMode: race.lapMode || 'bounce', laps: race.laps, classes: race.auto ? autoClasses(race) : [] },
-    course: { line: race.line || null, finishLine: race.lapMode === 'distance' ? (resolveFinishLine(race) || race.finishLine || null) : (race.finishLine || null), marks: (race.course && race.course.marks) || [], radiusM: race.course ? race.course.radiusM || 250 : null },
+    course: { line: race.line || null, finishLine: race.lapMode === 'distance' ? (resolveFinishLine(race) || race.finishLine || null) : (race.finishLine || null), marks: (race.course && race.course.marks) || [], radiusM: race.course ? markRadius(race) : null },
     window: null,
     boats: []
   };

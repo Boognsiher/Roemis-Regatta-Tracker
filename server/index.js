@@ -197,7 +197,8 @@ app.post('/api/trackers/:id/position', authGuard.middleware, (req, res) => {
     speed: isFiniteNumber(speed) ? speed : null,
     heading: isFiniteNumber(heading) ? heading : null,
     battery: isFiniteNumber(battery) ? battery : null,
-    ts: isFiniteNumber(ts) ? ts : Date.now()
+    ts: isFiniteNumber(ts) ? ts : Date.now(),
+    src: 'own'
   });
 
   broadcast({ type: 'position', tracker: store.getPublicTracker(id, { trail: false }) });
@@ -254,7 +255,8 @@ app.post('/api/trackers/:id/positions', authGuard.middleware, (req, res) => {
       speed: isFiniteNumber(p.speed) ? p.speed : null,
       heading: isFiniteNumber(p.heading) ? p.heading : null,
       battery: isFiniteNumber(p.battery) ? p.battery : null,
-      ts: p.ts
+      ts: p.ts,
+      src: 'own'
     });
     accepted += 1;
   }
@@ -347,7 +349,8 @@ app.post('/api/gateway/positions', requireGateway, (req, res) => {
       speed: isFiniteNumber(p.speed) ? p.speed : null,
       heading: isFiniteNumber(p.heading) ? p.heading : null,
       battery: isFiniteNumber(p.battery) ? p.battery : null,
-      ts: p.ts
+      ts: p.ts,
+      src: 'gw'
     });
     touched.add(tracker.id);
     accepted += 1;
