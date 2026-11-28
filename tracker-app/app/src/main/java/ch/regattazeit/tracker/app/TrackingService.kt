@@ -129,6 +129,14 @@ class TrackingService : Service(), LocationListener {
     }
 
     override fun onDestroy() {
+        // (28.11.2026) Auch beim Beenden per stopService() (Knopf "Anderen Link einrichten") GPS abmelden und WakeLock freigeben.
+        // Vorher lief beides nach dem Zerstoeren des Dienstes weiter (auf dem Geraet nachgewiesen: GPS-Anfrage 1 s + WakeLock aktiv),
+        // und der tote Dienst haengte weiter Positionen an den Puffer an.
+        try { (getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(this) } catch (_: SecurityException) { /* nichts zu entfernen */ }
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+        tracking = false
+        TrackingStatus.running = false
         worker.shutdown()
         super.onDestroy()
     }
