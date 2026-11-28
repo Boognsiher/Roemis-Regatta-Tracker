@@ -259,3 +259,26 @@ test('Schlechte Genauigkeit (> 50 m) wird verworfen, ausser sie betrifft fast di
   // Faellt mehr als 70 % weg, taugt die Angabe nicht als Massstab (z.B. andere Skala): alles bleibt
   assert.strictEqual(T.normalizeFixes(mk(10, (i) => (i < 8 ? 90 : 4))).length, 10);
 });
+
+test('Zwei Quellen im selben Tracker: Handy-Positionen neben dichten Gateway-Positionen entfallen, Luecken bleiben mit Handy-Positionen gefuellt', () => {
+  const gw = (s) => ({ ts: s * 1000, ...pt(s * 5, 0), src: 'gw' });
+  const own = (s) => ({ ts: s * 1000 + 400, ...pt(s * 5 + 40, 0), speed: 5, src: 'own' });   // 40 m "voraus": Zickzack
+  const fixes = [];
+  for (let s = 0; s <= 20; s += 1) fixes.push(gw(s));                  // T-Beam jede Sekunde bis 20 s
+  for (let s = 0; s <= 40; s += 5) fixes.push(own(s));                  // Handy alle 5 s bis 40 s
+  for (let s = 21; s <= 40; s += 1) if (s > 30) fixes.push(gw(s));      // Gateway-Luecke von 21 bis 30 s
+  fixes.sort((a, b) => a.ts - b.ts);
+  const out = T.normalizeFixes(fixes);
+  const ownLeft = out.filter((f) => f.src === 'own').map((f) => Math.round(f.ts / 1000));
+  // Handy bei 25 und 30 s liegen in der Gateway-Luecke (naechste Gateway-Position > 5 s entfernt) und bleiben, alles andere entfaellt
+  assert.deepStrictEqual(ownLeft, [25]);
+  assert.ok(out.filter((f) => f.src === 'gw').length >= 20);
+  // nur eine Quelle: unveraendert (Handy-Tracker ohne Gateway, LoRa-Tracker ohne Handy)
+  const ownOnly = Array.from({ length: 10 }, (_, i) => ({ ts: i * 5000, ...pt(i * 25, 0), speed: 5 }));
+  assert.strictEqual(T.normalizeFixes(ownOnly).length, 10);
+  const gwOnly = Array.from({ length: 10 }, (_, i) => ({ ts: i * 2000, ...pt(i * 10, 0), speed: null }));
+  assert.strictEqual(T.normalizeFixes(gwOnly).length, 10);
+  // Altdaten ohne Kennzeichnung: mit Geschwindigkeit = Handy, ohne = Gateway
+  const legacy = [{ ts: 0, ...pt(0, 0) }, { ts: 1000, ...pt(5, 0) }, { ts: 2000, ...pt(10, 0), speed: 5 }, { ts: 3000, ...pt(15, 0) }];
+  assert.strictEqual(T.normalizeFixes(legacy).length, 3);
+});
